@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · DumpKeeper</title>
+<script>
+try {
+  if (localStorage.getItem("dk-theme") === "dark") document.documentElement.dataset.theme = "dark";
+} catch {}
+</script>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 </head>
@@ -29,6 +34,10 @@
     </a>
   </nav>
   <div class="sidebar-footer">
+    <button class="sidebar-control theme-toggle" type="button" aria-pressed="false">
+      <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 15.5A8 8 0 1 1 8.5 4 6.5 6.5 0 0 0 20 15.5Z"/></svg></span>
+      <span class="sidebar-label theme-toggle-label">Dark theme</span>
+    </button>
     <button class="sidebar-control sidebar-toggle" type="button" aria-expanded="true">
       <span class="sidebar-mark sidebar-toggle-mark" aria-hidden="true">‹</span>
       <span class="sidebar-label sidebar-toggle-label">Collapse</span>
@@ -53,29 +62,51 @@
 {{if .CSRF}}<script>
 (() => {
   const body = document.body;
-  const toggle = document.querySelector(".sidebar-toggle");
-  if (!toggle) return;
-  const label = toggle.querySelector(".sidebar-toggle-label");
-  const mark = toggle.querySelector(".sidebar-toggle-mark");
-  const setCollapsed = (collapsed) => {
-    body.classList.toggle("sidebar-collapsed", collapsed);
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-    toggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-    label.textContent = collapsed ? "Expand" : "Collapse";
-    mark.textContent = collapsed ? "›" : "‹";
-  };
-  try {
-    setCollapsed(localStorage.getItem("dk-sidebar-collapsed") === "1");
-  } catch {
-    setCollapsed(false);
-  }
-  toggle.addEventListener("click", () => {
-    const collapsed = !body.classList.contains("sidebar-collapsed");
-    setCollapsed(collapsed);
+  const root = document.documentElement;
+  const sidebarToggle = document.querySelector(".sidebar-toggle");
+  const themeToggle = document.querySelector(".theme-toggle");
+
+  if (sidebarToggle) {
+    const label = sidebarToggle.querySelector(".sidebar-toggle-label");
+    const mark = sidebarToggle.querySelector(".sidebar-toggle-mark");
+    const setCollapsed = (collapsed) => {
+      body.classList.toggle("sidebar-collapsed", collapsed);
+      sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+      sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+      label.textContent = collapsed ? "Expand" : "Collapse";
+      mark.textContent = collapsed ? "›" : "‹";
+    };
     try {
-      localStorage.setItem("dk-sidebar-collapsed", collapsed ? "1" : "0");
-    } catch {}
-  });
+      setCollapsed(localStorage.getItem("dk-sidebar-collapsed") === "1");
+    } catch {
+      setCollapsed(false);
+    }
+    sidebarToggle.addEventListener("click", () => {
+      const collapsed = !body.classList.contains("sidebar-collapsed");
+      setCollapsed(collapsed);
+      try {
+        localStorage.setItem("dk-sidebar-collapsed", collapsed ? "1" : "0");
+      } catch {}
+    });
+  }
+
+  if (themeToggle) {
+    const label = themeToggle.querySelector(".theme-toggle-label");
+    const setTheme = (dark) => {
+      root.dataset.theme = dark ? "dark" : "";
+      themeToggle.setAttribute("aria-pressed", String(dark));
+      themeToggle.setAttribute("aria-label", dark ? "Use light theme" : "Use dark theme");
+      label.textContent = dark ? "Light theme" : "Dark theme";
+    };
+    setTheme(root.dataset.theme === "dark");
+    themeToggle.addEventListener("click", () => {
+      const dark = root.dataset.theme !== "dark";
+      setTheme(dark);
+      try {
+        localStorage.setItem("dk-theme", dark ? "dark" : "light");
+      } catch {}
+    });
+  }
 })();
 </script>{{end}}
 </body>
