@@ -17,6 +17,10 @@
       <td>{{if .UseSSL}}yes{{else}}no{{end}}</td>
       <td class="actions">
         <a class="btn btn-sm" href="/destinations/{{.ID}}/edit">Edit</a>
+        <form class="inline" method="post" action="/destinations/{{.ID}}/test">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Test connection</button>
+        </form>
         <form class="inline" method="post" action="/destinations/{{.ID}}/delete" onsubmit="return confirm('Delete destination {{.Name}} and the objects stored through it?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm btn-danger" type="submit">Delete</button>

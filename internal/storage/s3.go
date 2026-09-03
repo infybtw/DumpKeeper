@@ -63,6 +63,23 @@ func (s *S3) client() (*minio.Client, error) {
 	return client, nil
 }
 
+// Check verifies the configured endpoint, credentials, and bucket without
+// creating or modifying any objects.
+func (s *S3) Check(ctx context.Context) error {
+	client, err := s.client()
+	if err != nil {
+		return err
+	}
+	exists, err := client.BucketExists(ctx, s.cfg.Bucket)
+	if err != nil {
+		return fmt.Errorf("S3 check bucket %s: %w", s.cfg.Bucket, err)
+	}
+	if !exists {
+		return fmt.Errorf("S3 bucket %q does not exist or is not accessible", s.cfg.Bucket)
+	}
+	return nil
+}
+
 func (s *S3) objectName(filename string) string {
 	if prefix := strings.Trim(s.cfg.Prefix, "/"); prefix != "" {
 		return prefix + "/" + filename

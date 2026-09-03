@@ -1,13 +1,14 @@
 package web
 
 import (
+	"context"
+	"dumpkeeper/internal/backup"
+	"dumpkeeper/internal/db"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"dumpkeeper/internal/backup"
-	"dumpkeeper/internal/db"
+	"time"
 )
 
 // destinationForm is the display shape of the destination create/edit form.
@@ -105,6 +106,33 @@ func (s *Server) destinationUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectTo(w, r, "/destinations", "Destination "+d.Name+" updated.", "")
+}
+
+// destinationTest confirms that the saved credentials can access the bucket
+// without creating or changing any objects.
+func (s *Server) destinationTest(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	d, err := s.db.GetDestination(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := backup.S3Store(d).Check(ctx); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			redirectTo(w, r, "/destinations", "", "Destination test timed out after 10 seconds.")
+			return
+		}
+		redirectTo(w, r, "/destinations", "", "Could not access bucket for destination "+d.Name+": "+err.Error())
+		return
+	}
+	redirectTo(w, r, "/destinations", "Destination "+d.Name+" can access bucket "+d.Bucket+".", "")
 }
 
 func (s *Server) destinationDelete(w http.ResponseWriter, r *http.Request) {
