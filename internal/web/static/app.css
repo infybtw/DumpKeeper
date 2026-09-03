@@ -60,6 +60,15 @@ body.has-sidebar.sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+.sidebar-icon {
+  flex: 0 0 2rem;
+  display: inline-grid;
+  place-items: center;
+}
+.sidebar-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
 .sidebar nav { display: grid; gap: 0.3rem; }
 .sidebar nav a { min-height: 2.5rem; padding: 0.4rem 0.5rem; }
 .sidebar nav a:hover,
