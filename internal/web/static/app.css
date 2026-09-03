@@ -105,7 +105,7 @@ form.inline { display: inline-block; }
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; align-items: start; }
 .checks { display: flex; gap: 1.25rem; align-items: center; padding-top: 1.2rem; }
-.check { display: flex; align-items: center; gap: 0.45rem; flex-direction: row; }
+.form label.check { display: flex; align-items: center; gap: 0.45rem; flex-direction: row; }
 .check input { width: auto; }
 .muted { color: var(--muted); }
 .hint { font-size: 0.76rem; color: var(--muted); }
