@@ -198,10 +198,10 @@ func toExecutionRow(b db.Backup, jobName, databaseName string, destNames []strin
 	return row
 }
 
-// humanDuration preserves the exact elapsed duration recorded in the
-// execution timestamps, including sub-second precision.
+// humanDuration reports elapsed time in milliseconds, rounded to two decimal
+// places for a compact, consistent table value.
 func humanDuration(d time.Duration) string {
-	return d.String()
+	return fmt.Sprintf("%.2fms", float64(d)/float64(time.Millisecond))
 }
 
 // humanSize renders byte counts as B/KB/MB/GB/TB.
