@@ -7,24 +7,68 @@
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 </head>
-<body>
-<header class="topbar">
-  <a class="brand" href="/">DumpKeeper</a>
+<body{{if .CSRF}} class="has-sidebar"{{end}}>
+{{if .CSRF}}
+<aside class="sidebar" aria-label="Primary navigation">
+  <a class="sidebar-brand" href="/">
+    <span class="sidebar-mark" aria-hidden="true">DK</span>
+    <span class="sidebar-label">DumpKeeper</span>
+  </a>
   <nav>
-    <a href="/databases">Databases</a>
-    <a href="/destinations">Destinations</a>
-    <a href="/">Jobs</a>
-    <a href="/executions">Executions</a>
+    <a href="/databases" aria-label="Databases" title="Databases"><span class="sidebar-mark" aria-hidden="true">DB</span><span class="sidebar-label">Databases</span></a>
+    <a href="/destinations" aria-label="Destinations" title="Destinations"><span class="sidebar-mark" aria-hidden="true">DS</span><span class="sidebar-label">Destinations</span></a>
+    <a href="/" aria-label="Jobs" title="Jobs"><span class="sidebar-mark" aria-hidden="true">JB</span><span class="sidebar-label">Jobs</span></a>
+    <a href="/executions" aria-label="Executions" title="Executions"><span class="sidebar-mark" aria-hidden="true">EX</span><span class="sidebar-label">Executions</span></a>
   </nav>
-  {{if .CSRF}}<form class="inline" method="post" action="/logout">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <button class="btn btn-sm btn-ghost" type="submit">Log out</button>
-  </form>{{end}}
-</header>
+  <div class="sidebar-footer">
+    <button class="sidebar-control sidebar-toggle" type="button" aria-expanded="true">
+      <span class="sidebar-mark sidebar-toggle-mark" aria-hidden="true">‹</span>
+      <span class="sidebar-label sidebar-toggle-label">Collapse</span>
+    </button>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="sidebar-control sidebar-logout" type="submit" aria-label="Log out">
+        <span class="sidebar-mark" aria-hidden="true">LO</span>
+        <span class="sidebar-label">Log out</span>
+      </button>
+    </form>
+  </div>
+</aside>
+{{end}}
+<div class="app-shell">
 {{with .Msg}}<div class="flash flash-ok">{{.}}</div>{{end}}
 {{with .Err}}<div class="flash flash-err">{{.}}</div>{{end}}
 <main class="container">
 {{template "content" .}}
 </main>
+</div>
+{{if .CSRF}}<script>
+(() => {
+  const body = document.body;
+  const toggle = document.querySelector(".sidebar-toggle");
+  if (!toggle) return;
+  const label = toggle.querySelector(".sidebar-toggle-label");
+  const mark = toggle.querySelector(".sidebar-toggle-mark");
+  const setCollapsed = (collapsed) => {
+    body.classList.toggle("sidebar-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+    label.textContent = collapsed ? "Expand" : "Collapse";
+    mark.textContent = collapsed ? "›" : "‹";
+  };
+  try {
+    setCollapsed(localStorage.getItem("dk-sidebar-collapsed") === "1");
+  } catch {
+    setCollapsed(false);
+  }
+  toggle.addEventListener("click", () => {
+    const collapsed = !body.classList.contains("sidebar-collapsed");
+    setCollapsed(collapsed);
+    try {
+      localStorage.setItem("dk-sidebar-collapsed", collapsed ? "1" : "0");
+    } catch {}
+  });
+})();
+</script>{{end}}
 </body>
 </html>
