@@ -99,6 +99,12 @@ body.has-sidebar.sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+.sidebar-icon.sidebar-toggle-mark svg {
+  width: 1.65rem;
+  height: 1.65rem;
+  transition: transform 160ms ease;
+}
+.sidebar-collapsed .sidebar-toggle-mark svg { transform: rotate(180deg); }
 .sidebar-icon {
   flex: 0 0 2rem;
   display: inline-grid;
