@@ -105,6 +105,9 @@ body.has-sidebar.sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr
   width: 1.15rem;
   height: 1.15rem;
 }
+.theme-icon .theme-sun { display: none; }
+:root[data-theme="dark"] .theme-icon .theme-moon { display: none; }
+:root[data-theme="dark"] .theme-icon .theme-sun { display: block; }
 .sidebar nav { display: grid; gap: 0.3rem; }
 .sidebar nav a { min-height: 2.5rem; padding: 0.4rem 0.5rem; }
 .sidebar nav a:hover,
