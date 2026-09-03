@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Databases</h1>
+  <a class="btn btn-primary" href="/databases/new">New database</a>
+</div>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Target</th><th>Username</th><th>SSL mode</th><th>Used by jobs</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {{range .Data}}
+    <tr>
+      <td><strong>{{.Name}}</strong></td>
+      <td><code>{{.Host}}:{{.Port}}/{{.DBName}}</code></td>
+      <td>{{.Username}}</td>
+      <td>{{.SSLMode}}</td>
+      <td>{{.JobCount}}</td>
+      <td class="actions">
+        <a class="btn btn-sm" href="/databases/{{.ID}}/edit">Edit</a>
+        <form class="inline" method="post" action="/databases/{{.ID}}/delete" onsubmit="return confirm('Delete database {{.Name}}?')">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" class="muted">No databases yet — <a href="/databases/new">add one</a> to use it in jobs.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

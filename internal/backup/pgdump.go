@@ -11,18 +11,19 @@ import (
 	"dumpkeeper/internal/db"
 )
 
-// runDump runs pg_dump for job, writing a custom-format dump to path.
-// Credentials travel via PGPASSWORD/PGSSLMODE so they never appear in argv.
-func runDump(ctx context.Context, job db.Job, path string) error {
+// runDump runs pg_dump for the job's database, writing a custom-format dump
+// to path. Credentials travel via PGPASSWORD/PGSSLMODE so they never appear
+// in argv.
+func runDump(ctx context.Context, dbe db.Database, path string) error {
 	cmd := exec.CommandContext(ctx, "pg_dump",
 		"--format=custom",
 		"--file="+path,
-		"--host="+job.Host,
-		"--port="+strconv.Itoa(job.Port),
-		"--username="+job.Username,
-		"--dbname="+job.DBName,
+		"--host="+dbe.Host,
+		"--port="+strconv.Itoa(dbe.Port),
+		"--username="+dbe.Username,
+		"--dbname="+dbe.DBName,
 	)
-	cmd.Env = append(os.Environ(), "PGPASSWORD="+job.Password, "PGSSLMODE="+job.SSLMode)
+	cmd.Env = append(os.Environ(), "PGPASSWORD="+dbe.Password, "PGSSLMODE="+dbe.SSLMode)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

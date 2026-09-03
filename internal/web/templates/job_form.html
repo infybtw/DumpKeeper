@@ -6,40 +6,18 @@
 <form class="form" method="post" action="{{.Data.Action}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <label>Name
-    <input name="name" value="{{.Data.Name}}" placeholder="prod-db" required>
+    <input name="name" value="{{.Data.Name}}" placeholder="nightly-prod" required>
   </label>
-  <div class="grid2">
-    <label>Host
-      <input name="host" value="{{.Data.Host}}" placeholder="127.0.0.1" required>
-    </label>
-    <label>Port
-      <input name="port" type="number" min="1" max="65535" value="{{.Data.Port}}">
-    </label>
-  </div>
-  <div class="grid2">
-    <label>Username
-      <input name="username" value="{{.Data.Username}}" required>
-    </label>
-    <label>Password
-      <input name="password" type="password" value="{{.Data.Password}}" required>
-    </label>
-  </div>
-  <div class="grid2">
-    <label>Database
-      <input name="dbname" value="{{.Data.DBName}}" required>
-    </label>
-    <label>SSL mode
-      <select name="sslmode">
-        {{$cur := .Data.SSLMode}}
-        <option value="disable" {{opt "disable" $cur}}>disable</option>
-        <option value="allow" {{opt "allow" $cur}}>allow</option>
-        <option value="prefer" {{opt "prefer" $cur}}>prefer</option>
-        <option value="require" {{opt "require" $cur}}>require</option>
-        <option value="verify-ca" {{opt "verify-ca" $cur}}>verify-ca</option>
-        <option value="verify-full" {{opt "verify-full" $cur}}>verify-full</option>
-      </select>
-    </label>
-  </div>
+  <label>Database
+    <select name="database_id">
+      <option value="">— choose a database —</option>
+      {{$cur := .Data.DatabaseID}}
+      {{range .Data.Databases}}
+      <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}} ({{.Host}}:{{.Port}}/{{.DBName}})</option>
+      {{end}}
+    </select>
+    <span class="hint">Manage connection profiles on the <a href="/databases">Databases</a> page.</span>
+  </label>
   <label>Schedule
     <input name="schedule" value="{{.Data.Schedule}}" placeholder="0 2 * * *">
     <span class="hint">Standard 5-field cron: minute hour day-of-month month day-of-week. This example runs daily at 02:00. Leave empty for manual backups only.</span>
@@ -47,11 +25,13 @@
   <div class="grid2">
     <label>Keep last
       <input name="keep_last" type="number" min="0" value="{{.Data.KeepLast}}">
-      <span class="hint">Completed backups to keep for this job. 0 keeps everything.</span>
+      <span class="hint">Executions to keep for this job. 0 keeps everything.</span>
     </label>
     <div class="checks">
-      <label class="check"><input type="checkbox" name="dest_local" value="1" {{if .Data.DestLocal}}checked{{end}}> Store locally</label>
-      <label class="check"><input type="checkbox" name="dest_s3" value="1" {{if .Data.DestS3}}checked{{end}}> Store to S3</label>
+      <label class="check"><input type="checkbox" name="dest_local" value="1" {{if .Data.DestLocal}}checked{{end}}> Local</label>
+      {{range .Data.Destinations}}
+      <label class="check"><input type="checkbox" name="dest" value="{{.ID}}" {{if member .ID $.Data.DestinationIDs}}checked{{end}}> {{.Name}}</label>
+      {{end}}
     </div>
   </div>
   <div>

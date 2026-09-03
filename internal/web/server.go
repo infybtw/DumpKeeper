@@ -32,14 +32,17 @@ type Server struct {
 
 // route table (session middleware on everything except /login):
 //
-//	GET  /login                     POST /login                 POST /logout
-//	GET  /                          GET  /fragment/jobs
-//	GET  /jobs/new                  POST /jobs/new
-//	GET  /jobs/{id}/edit            POST /jobs/{id}/edit        POST /jobs/{id}/delete
+//	GET  /login                            POST /login                  POST /logout
+//	GET  /                                 GET  /fragment/jobs
+//	GET  /jobs/new                         POST /jobs/new
+//	GET  /jobs/{id}/edit                   POST /jobs/{id}/edit         POST /jobs/{id}/delete
 //	POST /jobs/{id}/backup
-//	GET  /backups                   POST /backups/{id}/restore  POST /backups/{id}/delete
-//	GET  /backups/{id}/download
-//	GET  /settings                  POST /settings
+//	GET  /databases                        GET  /databases/new          POST /databases/new
+//	GET  /databases/{id}/edit              POST /databases/{id}/edit    POST /databases/{id}/delete
+//	GET  /destinations                     GET  /destinations/new       POST /destinations/new
+//	GET  /destinations/{id}/edit           POST /destinations/{id}/edit POST /destinations/{id}/delete
+//	GET  /executions                       POST /executions/{id}/restore
+//	POST /executions/{id}/delete           GET  /executions/{id}/download
 func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *scheduler.Scheduler) *Server {
 	s := &Server{cfg: cfg, db: store, engine: engine, sched: sched, mux: http.NewServeMux()}
 	mux := s.mux
@@ -56,14 +59,24 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /jobs/{id}/delete", s.requireAuth(s.jobDelete))
 	mux.HandleFunc("POST /jobs/{id}/backup", s.requireAuth(s.jobBackup))
 
-	mux.HandleFunc("GET /backups", s.requireAuth(s.backupsList))
-	mux.HandleFunc("POST /backups/{id}/restore", s.requireAuth(s.backupRestore))
-	mux.HandleFunc("POST /backups/{id}/delete", s.requireAuth(s.backupDelete))
-	mux.HandleFunc("GET /backups/{id}/download", s.requireAuth(s.backupDownload))
+	mux.HandleFunc("GET /databases", s.requireAuth(s.databasesList))
+	mux.HandleFunc("GET /databases/new", s.requireAuth(s.databaseNewForm))
+	mux.HandleFunc("POST /databases/new", s.requireAuth(s.databaseCreate))
+	mux.HandleFunc("GET /databases/{id}/edit", s.requireAuth(s.databaseEditForm))
+	mux.HandleFunc("POST /databases/{id}/edit", s.requireAuth(s.databaseUpdate))
+	mux.HandleFunc("POST /databases/{id}/delete", s.requireAuth(s.databaseDelete))
 
-	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsForm))
-	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
-	mux.HandleFunc("POST /logout", s.requireAuth(s.logout))
+	mux.HandleFunc("GET /destinations", s.requireAuth(s.destinationsList))
+	mux.HandleFunc("GET /destinations/new", s.requireAuth(s.destinationNewForm))
+	mux.HandleFunc("POST /destinations/new", s.requireAuth(s.destinationCreate))
+	mux.HandleFunc("GET /destinations/{id}/edit", s.requireAuth(s.destinationEditForm))
+	mux.HandleFunc("POST /destinations/{id}/edit", s.requireAuth(s.destinationUpdate))
+	mux.HandleFunc("POST /destinations/{id}/delete", s.requireAuth(s.destinationDelete))
+
+	mux.HandleFunc("GET /executions", s.requireAuth(s.executionsList))
+	mux.HandleFunc("POST /executions/{id}/restore", s.requireAuth(s.executionRestore))
+	mux.HandleFunc("POST /executions/{id}/delete", s.requireAuth(s.executionDelete))
+	mux.HandleFunc("GET /executions/{id}/download", s.requireAuth(s.executionDownload))
 
 	static, err := fs.Sub(files, "static")
 	if err != nil {
@@ -94,9 +107,17 @@ var funcMap = template.FuncMap{
 		}
 		return ""
 	},
+	// member reports whether id is in ids (job form destination checkboxes).
+	"member": func(id int64, ids []int64) bool {
+		for _, v := range ids {
+			if v == id {
+				return true
+			}
+		}
+		return false
+	},
 }
 
-// render parses base layout + fragment + the named page and writes it.
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
 	t, err := template.New("base.html").Funcs(funcMap).ParseFS(files,
 		"templates/base.html", "templates/fragment_jobs.html", "templates/"+name)

@@ -42,8 +42,7 @@ func main() {
 	defer store.Close()
 
 	local := storage.NewLocal(filepath.Join(cfg.DataDir, "backups"))
-	s3store := storage.NewS3(store.GetSettings)
-	engine := backup.New(store, local, s3store)
+	engine := backup.New(store, local)
 
 	sched := scheduler.New(engine.Trigger)
 	jobs, err := store.ListJobs()

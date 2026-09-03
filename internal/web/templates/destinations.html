@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Destinations</h1>
+  <a class="btn btn-primary" href="/destinations/new">New destination</a>
+</div>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Endpoint</th><th>Bucket</th><th>Prefix</th><th>HTTPS</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {{range .Data}}
+    <tr>
+      <td><strong>{{.Name}}</strong></td>
+      <td><code>{{.Endpoint}}</code>{{if .Region}} <span class="hint">{{.Region}}</span>{{end}}</td>
+      <td><code>{{.Bucket}}</code></td>
+      <td>{{if .Prefix}}<code>{{.Prefix}}/</code>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>{{if .UseSSL}}yes{{else}}no{{end}}</td>
+      <td class="actions">
+        <a class="btn btn-sm" href="/destinations/{{.ID}}/edit">Edit</a>
+        <form class="inline" method="post" action="/destinations/{{.ID}}/delete" onsubmit="return confirm('Delete destination {{.Name}} and the objects stored through it?')">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" class="muted">No destinations yet — jobs can still store locally, or <a href="/destinations/new">add an S3 bucket</a>.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

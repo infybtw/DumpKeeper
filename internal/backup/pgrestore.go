@@ -3,19 +3,19 @@ package backup
 import (
 	"bytes"
 	"context"
+	"dumpkeeper/internal/db"
+	"dumpkeeper/internal/storage"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
-
-	"dumpkeeper/internal/db"
 )
 
-// Restore replays a completed backup into the job's own configured database
-// via pg_restore. Local file is preferred; S3 is fetched to a temp file when
-// the local copy is gone.
+// Restore replays a completed backup into its job's configured database via
+// pg_restore. The local copy is preferred; otherwise stored S3 destinations
+// are tried in order, streaming each to a temp file.
 func (e *Engine) Restore(ctx context.Context, b db.Backup) error {
 	if b.Status != db.StatusCompleted {
 		return fmt.Errorf("backup %d is not completed, refusing restore", b.ID)
@@ -24,29 +24,46 @@ func (e *Engine) Restore(ctx context.Context, b db.Backup) error {
 	if err != nil {
 		return fmt.Errorf("load job: %w", err)
 	}
+	dbe, err := e.DB.GetDatabase(job.DatabaseID)
+	if err != nil {
+		return fmt.Errorf("load database: %w", err)
+	}
 
 	path := filepath.Join(e.Local.Root, b.Filename)
 	if _, err := os.Stat(path); err != nil {
-		if !b.StoredS3 {
-			return fmt.Errorf("dump %q not found locally and not stored in S3", b.Filename)
-		}
-		tmp, err := e.fetchFromS3(ctx, b.Filename)
+		dests, err := e.DB.BackupDestinations(b.ID)
 		if err != nil {
 			return err
 		}
-		path = tmp
-		defer os.Remove(tmp)
+		if len(dests) == 0 {
+			return fmt.Errorf("dump %q not found locally and not stored on any destination", b.Filename)
+		}
+		var fetched string
+		var lastErr error
+		for _, d := range dests {
+			fetched, err = e.fetchFromS3(ctx, S3Store(d), b.Filename)
+			if err == nil {
+				lastErr = nil
+				break
+			}
+			lastErr = fmt.Errorf("destination %s: %w", d.Name, err)
+		}
+		if lastErr != nil {
+			return fmt.Errorf("fetch %q: %w", b.Filename, lastErr)
+		}
+		path = fetched
+		defer os.Remove(path)
 	}
 
 	cmd := exec.CommandContext(ctx, "pg_restore",
-		"--host="+job.Host,
-		"--port="+strconv.Itoa(job.Port),
-		"--username="+job.Username,
-		"--dbname="+job.DBName,
+		"--host="+dbe.Host,
+		"--port="+strconv.Itoa(dbe.Port),
+		"--username="+dbe.Username,
+		"--dbname="+dbe.DBName,
 		"--clean", "--if-exists", "--no-owner", "--no-privileges", "--exit-on-error",
 		path,
 	)
-	cmd.Env = append(os.Environ(), "PGPASSWORD="+job.Password, "PGSSLMODE="+job.SSLMode)
+	cmd.Env = append(os.Environ(), "PGPASSWORD="+dbe.Password, "PGSSLMODE="+dbe.SSLMode)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -63,10 +80,10 @@ func (e *Engine) Restore(ctx context.Context, b db.Backup) error {
 }
 
 // fetchFromS3 streams the S3 object into a temp file and returns its path.
-func (e *Engine) fetchFromS3(ctx context.Context, filename string) (string, error) {
-	rc, _, err := e.S3.Open(ctx, filename)
+func (e *Engine) fetchFromS3(ctx context.Context, store *storage.S3, filename string) (string, error) {
+	rc, _, err := store.Open(ctx, filename)
 	if err != nil {
-		return "", fmt.Errorf("fetch %q from S3: %w", filename, err)
+		return "", err
 	}
 	defer rc.Close()
 	tmp, err := os.CreateTemp("", "dk-restore-*.dump")

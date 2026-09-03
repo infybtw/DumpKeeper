@@ -25,11 +25,17 @@ func TestPruneKeepsLastN(t *testing.T) {
 	if err := os.MkdirAll(local.Root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	engine := New(store, local, nil)
+	engine := New(store, local)
 
-	job, err := store.CreateJob(db.Job{
-		Name: "prune-test", Host: "127.0.0.1", Port: 5432,
+	dbe, err := store.CreateDatabase(db.Database{
+		Name: "prune-db", Host: "127.0.0.1", Port: 5432,
 		Username: "u", Password: "p", DBName: "d", SSLMode: "prefer",
+	})
+	if err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	job, err := store.CreateJob(db.Job{
+		Name: "prune-test", DatabaseID: dbe.ID,
 		DestLocal: true, KeepLast: 2,
 	})
 	if err != nil {

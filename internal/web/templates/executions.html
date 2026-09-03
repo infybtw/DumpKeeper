@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
-  <h1>Backups</h1>
-  <form class="filter" method="get" action="/backups">
+  <h1>Executions</h1>
+  <form class="filter" method="get" action="/executions">
     <select name="job">
       <option value="">All jobs</option>
       {{$sel := .Data.Selected}}
@@ -14,34 +14,38 @@
 </div>
 <table>
   <thead>
-    <tr><th>Job</th><th>Started</th><th>Trigger</th><th>Status</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
+    <tr><th>Job</th><th>Database</th><th>Started</th><th>Trigger</th><th>Status</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
   </thead>
   <tbody>
     {{range .Data.Backups}}
     <tr>
-      <td><a href="/backups?job={{.JobID}}">{{.JobName}}</a></td>
+      <td><a href="/executions?job={{.JobID}}">{{.JobName}}</a></td>
+      <td>{{if .Database}}{{.Database}}{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{.StartedAt}}</td>
       <td>{{.Trigger}}</td>
       <td><span class="status status-{{.Status}}">{{.Status}}</span>{{if .FinishedAt}}<div class="hint">{{.FinishedAt}}</div>{{end}}</td>
       <td>{{.Size}}</td>
-      <td>{{if .StoredLocal}}<span class="chip">local</span>{{end}}{{if .StoredS3}}<span class="chip">s3</span>{{end}}</td>
+      <td>
+        {{range .StoredOn}}<span class="chip">{{.}}</span>{{end}}
+        {{if not .StoredOn}}<span class="muted">nowhere</span>{{end}}
+      </td>
       <td class="actions">
-        {{if .HasFile}}<a class="btn btn-sm" href="/backups/{{.ID}}/download">Download</a>{{end}}
+        {{if .HasFile}}<a class="btn btn-sm" href="/executions/{{.ID}}/download">Download</a>{{end}}
         {{if eq .Status "completed"}}
-        <form class="inline" method="post" action="/backups/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this backup?')">
+        <form class="inline" method="post" action="/executions/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Restore</button>
         </form>
         {{end}}
-        <form class="inline" method="post" action="/backups/{{.ID}}/delete" onsubmit="return confirm('Delete this backup and its stored files?')">
+        <form class="inline" method="post" action="/executions/{{.ID}}/delete" onsubmit="return confirm('Delete this execution and its stored files?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm btn-danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
-    {{if .Error}}<tr><td colspan="7" class="row-note">{{.Error}}</td></tr>{{end}}
+    {{if .Error}}<tr><td colspan="8" class="row-note">{{.Error}}</td></tr>{{end}}
     {{else}}
-    <tr><td colspan="7" class="muted">No backups yet.</td></tr>
+    <tr><td colspan="8" class="muted">No executions yet.</td></tr>
     {{end}}
   </tbody>
 </table>

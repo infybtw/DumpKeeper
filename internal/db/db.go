@@ -1,5 +1,6 @@
-// Package db is DumpKeeper's SQLite persistence layer: schema, jobs,
-// backups, settings, and sessions. Every query the app needs lives here.
+// Package db is DumpKeeper's SQLite persistence layer: schema, databases,
+// destinations, jobs, backups (executions), and sessions. Every query the
+// app needs lives here.
 package db
 
 import (
@@ -36,8 +37,8 @@ func Now() string { return FormatTime(time.Now()) }
 // ParseTime parses a stored timestamp.
 func ParseTime(s string) (time.Time, error) { return time.Parse(TimeFormat, s) }
 
-// Job is one backup target database.
-type Job struct {
+// Database is one PostgreSQL connection profile, reusable across jobs.
+type Database struct {
 	ID        int64
 	Name      string
 	Host      string
@@ -46,15 +47,40 @@ type Job struct {
 	Password  string
 	DBName    string
 	SSLMode   string
-	Schedule  string // cron expression, "" = manual only
-	DestLocal bool
-	DestS3    bool
-	KeepLast  int64 // 0 = unlimited
 	CreatedAt string
 	UpdatedAt string
 }
 
-// Backup is one dump attempt for a job.
+// Destination is one S3-compatible backup target, reusable across jobs.
+type Destination struct {
+	ID        int64
+	Name      string
+	Endpoint  string
+	Region    string
+	Bucket    string
+	Prefix    string
+	AccessKey string
+	SecretKey string
+	UseSSL    bool
+	CreatedAt string
+	UpdatedAt string
+}
+
+// Job targets one Database; results go to local storage and/or the linked
+// Destinations.
+type Job struct {
+	ID             int64
+	Name           string
+	DatabaseID     int64
+	Schedule       string // cron expression, "" = manual only
+	DestLocal      bool
+	KeepLast       int64 // 0 = unlimited
+	DestinationIDs []int64
+	CreatedAt      string
+	UpdatedAt      string
+}
+
+// Backup is one execution of a job.
 type Backup struct {
 	ID          int64
 	JobID       int64
@@ -65,7 +91,6 @@ type Backup struct {
 	SizeBytes   int64
 	Filename    string
 	StoredLocal bool
-	StoredS3    bool
 	Error       string
 	RestoredAt  *string
 }
@@ -78,24 +103,50 @@ type Session struct {
 	ExpiresAt string
 }
 
+// BackupLink says that a backup file is stored on a destination.
+type BackupLink struct {
+	BackupID    int64
+	Destination Destination
+}
+
 // Store wraps the SQLite database.
 type Store struct {
 	sql *sql.DB
 }
 
-// ddl is applied at Open; every statement is idempotent.
+// ddl is applied at Open; every statement is idempotent. Order matters for
+// readability only; SQLite accepts forward references between tables.
 var ddl = []string{
-	`CREATE TABLE IF NOT EXISTS jobs (
+	`CREATE TABLE IF NOT EXISTS databases (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 5432,
   username TEXT NOT NULL, password TEXT NOT NULL,
   dbname TEXT NOT NULL, sslmode TEXT NOT NULL DEFAULT 'prefer',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)`,
+	`CREATE TABLE IF NOT EXISTS destinations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  endpoint TEXT NOT NULL, region TEXT NOT NULL DEFAULT '',
+  bucket TEXT NOT NULL, prefix TEXT NOT NULL DEFAULT '',
+  access_key TEXT NOT NULL, secret_key TEXT NOT NULL,
+  use_ssl INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)`,
+	`CREATE TABLE IF NOT EXISTS jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  database_id INTEGER NOT NULL REFERENCES databases(id),
   schedule TEXT NOT NULL DEFAULT '',
   dest_local INTEGER NOT NULL DEFAULT 1,
-  dest_s3 INTEGER NOT NULL DEFAULT 0,
   keep_last INTEGER NOT NULL DEFAULT 7,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)`,
+	`CREATE TABLE IF NOT EXISTS job_destinations (
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  destination_id INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+  PRIMARY KEY (job_id, destination_id)
 )`,
 	`CREATE TABLE IF NOT EXISTS backups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,20 +157,24 @@ var ddl = []string{
   size_bytes INTEGER NOT NULL DEFAULT 0,
   filename TEXT NOT NULL,
   stored_local INTEGER NOT NULL DEFAULT 0,
-  stored_s3 INTEGER NOT NULL DEFAULT 0,
   error TEXT NOT NULL DEFAULT '',
   restored_at TEXT
 )`,
 	`CREATE INDEX IF NOT EXISTS idx_backups_job ON backups(job_id, started_at DESC)`,
-	`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS backup_destinations (
+  backup_id INTEGER NOT NULL REFERENCES backups(id) ON DELETE CASCADE,
+  destination_id INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+  PRIMARY KEY (backup_id, destination_id)
+)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY, csrf TEXT NOT NULL,
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL
 )`,
 }
 
-// Open opens (creating if needed) the database at path and applies the
-// schema. foreign_keys is enabled via DSN so every pooled connection gets it.
+// Open opens (creating if needed) the database at path, applies the schema,
+// and migrates pre-2.0 layouts. foreign_keys is enabled via DSN so every
+// pooled connection gets it.
 func Open(path string) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=foreign_keys=1&_pragma=busy_timeout=10000&_pragma=journal_mode=WAL"
 	sq, err := sql.Open("sqlite", dsn)
@@ -137,11 +192,135 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("apply schema: %w", err)
 		}
 	}
-	return &Store{sql: sq}, nil
+	s := &Store{sql: sq}
+	if err := s.migrateV1(); err != nil {
+		sq.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	return s, nil
 }
 
 // Close closes the database.
 func (s *Store) Close() error { return s.sql.Close() }
+
+// migrateV1 reshapes the MVP layout in place: jobs used to embed database
+// credentials and S3 was one global setting. Detected via the legacy
+// jobs.dbname column; a no-op on fresh databases. A database entity is
+// created per old job (same name), and the global S3 settings become a
+// single destination named "s3" linked to the jobs that used them.
+func (s *Store) migrateV1() error {
+	old, err := s.tableHasColumn("jobs", "dbname")
+	if err != nil || !old {
+		return err
+	}
+
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return fmt.Errorf("begin migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 1. Global S3 settings become one destination.
+	settings := map[string]string{}
+	srows, err := tx.Query(`SELECT key, value FROM settings`)
+	if err != nil {
+		return fmt.Errorf("read legacy settings: %w", err)
+	}
+	for srows.Next() {
+		var k, v string
+		if err := srows.Scan(&k, &v); err != nil {
+			srows.Close()
+			return err
+		}
+		settings[k] = v
+	}
+	srows.Close()
+	if err := srows.Err(); err != nil {
+		return err
+	}
+	var destID int64
+	if settings["s3_endpoint"] != "" {
+		useSSL := "0"
+		if settings["s3_use_ssl"] == "1" {
+			useSSL = "1"
+		}
+		res, err := tx.Exec(
+			`INSERT INTO destinations (name, endpoint, region, bucket, prefix, access_key, secret_key, use_ssl, created_at, updated_at)
+			 VALUES ('s3', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			settings["s3_endpoint"], settings["s3_region"], settings["s3_bucket"], settings["s3_prefix"],
+			settings["s3_access_key"], settings["s3_secret_key"], useSSL, Now(), Now())
+		if err != nil {
+			return fmt.Errorf("migrate destination: %w", err)
+		}
+		destID, _ = res.LastInsertId()
+	}
+
+	// 2. One database entity per job (job names are unique, so these are too).
+	if _, err := tx.Exec(
+		`INSERT INTO databases (name, host, port, username, password, dbname, sslmode, created_at, updated_at)
+		 SELECT name, host, port, username, password, dbname, sslmode, created_at, updated_at FROM jobs`); err != nil {
+		return fmt.Errorf("migrate databases: %w", err)
+	}
+
+	// 3. Point jobs at their new database entity.
+	if _, err := tx.Exec(`ALTER TABLE jobs ADD COLUMN database_id INTEGER REFERENCES databases(id)`); err != nil {
+		return fmt.Errorf("migrate jobs: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE jobs SET database_id = (SELECT id FROM databases WHERE name = jobs.name)`); err != nil {
+		return fmt.Errorf("migrate jobs: %w", err)
+	}
+
+	// 4. Move the S3 flag to destination links; jobs left with no
+	// destination fall back to local so they never become unrunnable.
+	if destID > 0 {
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO job_destinations (job_id, destination_id) SELECT id, ? FROM jobs WHERE dest_s3 = 1`, destID); err != nil {
+			return fmt.Errorf("migrate job destinations: %w", err)
+		}
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO backup_destinations (backup_id, destination_id) SELECT id, ? FROM backups WHERE stored_s3 = 1`, destID); err != nil {
+			return fmt.Errorf("migrate backup destinations: %w", err)
+		}
+	} else if _, err := tx.Exec(`UPDATE jobs SET dest_local = 1 WHERE dest_s3 = 1`); err != nil {
+		return fmt.Errorf("migrate job destinations: %w", err)
+	}
+
+	// 5. Drop legacy columns and the replaced settings table.
+	for _, col := range []string{"host", "port", "username", "password", "dbname", "sslmode", "dest_s3"} {
+		if _, err := tx.Exec(`ALTER TABLE jobs DROP COLUMN ` + col); err != nil {
+			return fmt.Errorf("migrate jobs: drop %s: %w", col, err)
+		}
+	}
+	if _, err := tx.Exec(`ALTER TABLE backups DROP COLUMN stored_s3`); err != nil {
+		return fmt.Errorf("migrate backups: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE settings`); err != nil {
+		return fmt.Errorf("migrate settings: %w", err)
+	}
+	return tx.Commit()
+}
+
+// tableHasColumn reports whether table has a column with the given name.
+func (s *Store) tableHasColumn(table, column string) (bool, error) {
+	rows, err := s.sql.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
 
 func b2i(b bool) int {
 	if b {
@@ -150,49 +329,260 @@ func b2i(b bool) int {
 	return 0
 }
 
-// ---- jobs ----
+// ---- databases ----
 
-const jobCols = "id, name, host, port, username, password, dbname, sslmode, schedule, dest_local, dest_s3, keep_last, created_at, updated_at"
+const databaseCols = "id, name, host, port, username, password, dbname, sslmode, created_at, updated_at"
 
-func scanJob(row interface{ Scan(dest ...any) error }) (Job, error) {
-	var j Job
-	var destLocal, destS3 int
-	err := row.Scan(&j.ID, &j.Name, &j.Host, &j.Port, &j.Username, &j.Password, &j.DBName,
-		&j.SSLMode, &j.Schedule, &destLocal, &destS3, &j.KeepLast, &j.CreatedAt, &j.UpdatedAt)
-	j.DestLocal = destLocal == 1
-	j.DestS3 = destS3 == 1
-	return j, err
+func scanDatabase(row interface{ Scan(dest ...any) error }) (Database, error) {
+	var d Database
+	err := row.Scan(&d.ID, &d.Name, &d.Host, &d.Port, &d.Username, &d.Password, &d.DBName, &d.SSLMode, &d.CreatedAt, &d.UpdatedAt)
+	return d, err
 }
 
-// CreateJob inserts j, fills its timestamps, and returns it with the new ID.
-func (s *Store) CreateJob(j Job) (Job, error) {
+// CreateDatabase inserts d, fills its timestamps, and returns it with the new ID.
+func (s *Store) CreateDatabase(d Database) (Database, error) {
 	now := Now()
 	res, err := s.sql.Exec(
-		`INSERT INTO jobs (name, host, port, username, password, dbname, sslmode, schedule, dest_local, dest_s3, keep_last, created_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.Name, j.Host, j.Port, j.Username, j.Password, j.DBName, j.SSLMode, j.Schedule,
-		b2i(j.DestLocal), b2i(j.DestS3), j.KeepLast, now, now)
+		`INSERT INTO databases (name, host, port, username, password, dbname, sslmode, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+		d.Name, d.Host, d.Port, d.Username, d.Password, d.DBName, d.SSLMode, now, now)
 	if err != nil {
-		return Job{}, fmt.Errorf("create job: %w", err)
+		return Database{}, fmt.Errorf("create database: %w", err)
 	}
-	j.ID, _ = res.LastInsertId()
-	j.CreatedAt, j.UpdatedAt = now, now
-	return j, nil
+	d.ID, _ = res.LastInsertId()
+	d.CreatedAt, d.UpdatedAt = now, now
+	return d, nil
 }
 
-// UpdateJob updates all editable fields of j and bumps updated_at.
-func (s *Store) UpdateJob(j Job) error {
+// UpdateDatabase updates all editable fields and bumps updated_at.
+func (s *Store) UpdateDatabase(d Database) error {
 	_, err := s.sql.Exec(
-		`UPDATE jobs SET name=?, host=?, port=?, username=?, password=?, dbname=?, sslmode=?, schedule=?, dest_local=?, dest_s3=?, keep_last=?, updated_at=? WHERE id=?`,
-		j.Name, j.Host, j.Port, j.Username, j.Password, j.DBName, j.SSLMode, j.Schedule,
-		b2i(j.DestLocal), b2i(j.DestS3), j.KeepLast, Now(), j.ID)
+		`UPDATE databases SET name=?, host=?, port=?, username=?, password=?, dbname=?, sslmode=?, updated_at=? WHERE id=?`,
+		d.Name, d.Host, d.Port, d.Username, d.Password, d.DBName, d.SSLMode, Now(), d.ID)
 	if err != nil {
-		return fmt.Errorf("update job %d: %w", j.ID, err)
+		return fmt.Errorf("update database %d: %w", d.ID, err)
 	}
 	return nil
 }
 
-// DeleteJob removes the job; its backups cascade.
+// DeleteDatabase removes a database. The caller must refuse when jobs
+// reference it (no FK cascade by design: dropping a database silently
+// deletes its jobs would be a surprise).
+func (s *Store) DeleteDatabase(id int64) error {
+	_, err := s.sql.Exec(`DELETE FROM databases WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("delete database %d: %w", id, err)
+	}
+	return nil
+}
+
+// GetDatabase returns one database or ErrNotFound.
+func (s *Store) GetDatabase(id int64) (Database, error) {
+	d, err := scanDatabase(s.sql.QueryRow(`SELECT `+databaseCols+` FROM databases WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Database{}, ErrNotFound
+	}
+	return d, err
+}
+
+// ListDatabases returns all databases ordered by name.
+func (s *Store) ListDatabases() ([]Database, error) {
+	return s.listDatabasesQuery(`SELECT ` + databaseCols + ` FROM databases ORDER BY name`)
+}
+
+func (s *Store) listDatabasesQuery(q string, args ...any) ([]Database, error) {
+	rows, err := s.sql.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list databases: %w", err)
+	}
+	defer rows.Close()
+	var out []Database
+	for rows.Next() {
+		d, err := scanDatabase(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DatabaseJobCount counts jobs referencing a database.
+func (s *Store) DatabaseJobCount(id int64) (int, error) {
+	var n int
+	err := s.sql.QueryRow(`SELECT COUNT(1) FROM jobs WHERE database_id=?`, id).Scan(&n)
+	return n, err
+}
+
+// DatabaseNameExists reports whether another database (id != excludeID)
+// already uses name.
+func (s *Store) DatabaseNameExists(name string, excludeID int64) (bool, error) {
+	var n int
+	err := s.sql.QueryRow(`SELECT COUNT(1) FROM databases WHERE name=? AND id != ?`, name, excludeID).Scan(&n)
+	return n > 0, err
+}
+
+// ---- destinations ----
+
+const destinationCols = "id, name, endpoint, region, bucket, prefix, access_key, secret_key, use_ssl, created_at, updated_at"
+
+const destinationColsQualified = "d.id, d.name, d.endpoint, d.region, d.bucket, d.prefix, d.access_key, d.secret_key, d.use_ssl, d.created_at, d.updated_at"
+
+func scanDestination(row interface{ Scan(dest ...any) error }) (Destination, error) {
+	var d Destination
+	var useSSL int
+	err := row.Scan(&d.ID, &d.Name, &d.Endpoint, &d.Region, &d.Bucket, &d.Prefix, &d.AccessKey, &d.SecretKey, &useSSL, &d.CreatedAt, &d.UpdatedAt)
+	d.UseSSL = useSSL == 1
+	return d, err
+}
+
+// CreateDestination inserts d, fills its timestamps, and returns it with the new ID.
+func (s *Store) CreateDestination(d Destination) (Destination, error) {
+	now := Now()
+	res, err := s.sql.Exec(
+		`INSERT INTO destinations (name, endpoint, region, bucket, prefix, access_key, secret_key, use_ssl, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		d.Name, d.Endpoint, d.Region, d.Bucket, d.Prefix, d.AccessKey, d.SecretKey, b2i(d.UseSSL), now, now)
+	if err != nil {
+		return Destination{}, fmt.Errorf("create destination: %w", err)
+	}
+	d.ID, _ = res.LastInsertId()
+	d.CreatedAt, d.UpdatedAt = now, now
+	return d, nil
+}
+
+// UpdateDestination updates all editable fields and bumps updated_at.
+func (s *Store) UpdateDestination(d Destination) error {
+	_, err := s.sql.Exec(
+		`UPDATE destinations SET name=?, endpoint=?, region=?, bucket=?, prefix=?, access_key=?, secret_key=?, use_ssl=?, updated_at=? WHERE id=?`,
+		d.Name, d.Endpoint, d.Region, d.Bucket, d.Prefix, d.AccessKey, d.SecretKey, b2i(d.UseSSL), Now(), d.ID)
+	if err != nil {
+		return fmt.Errorf("update destination %d: %w", d.ID, err)
+	}
+	return nil
+}
+
+// DeleteDestination removes a destination; job and backup links cascade.
+func (s *Store) DeleteDestination(id int64) error {
+	_, err := s.sql.Exec(`DELETE FROM destinations WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("delete destination %d: %w", id, err)
+	}
+	return nil
+}
+
+// GetDestination returns one destination or ErrNotFound.
+func (s *Store) GetDestination(id int64) (Destination, error) {
+	d, err := scanDestination(s.sql.QueryRow(`SELECT `+destinationCols+` FROM destinations WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Destination{}, ErrNotFound
+	}
+	return d, err
+}
+
+// ListDestinations returns all destinations ordered by name.
+func (s *Store) ListDestinations() ([]Destination, error) {
+	rows, err := s.sql.Query(`SELECT ` + destinationCols + ` FROM destinations ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("list destinations: %w", err)
+	}
+	defer rows.Close()
+	var out []Destination
+	for rows.Next() {
+		d, err := scanDestination(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DestinationNameExists reports whether another destination (id != excludeID)
+// already uses name.
+func (s *Store) DestinationNameExists(name string, excludeID int64) (bool, error) {
+	var n int
+	err := s.sql.QueryRow(`SELECT COUNT(1) FROM destinations WHERE name=? AND id != ?`, name, excludeID).Scan(&n)
+	return n > 0, err
+}
+
+// ---- jobs ----
+
+const jobCols = "id, name, database_id, schedule, dest_local, keep_last, created_at, updated_at"
+
+func scanJob(row interface{ Scan(dest ...any) error }) (Job, error) {
+	var j Job
+	var destLocal int
+	err := row.Scan(&j.ID, &j.Name, &j.DatabaseID, &j.Schedule, &destLocal, &j.KeepLast, &j.CreatedAt, &j.UpdatedAt)
+	j.DestLocal = destLocal == 1
+	return j, err
+}
+
+// jobDestinationIDs loads an job's S3 destination links.
+func (s *Store) jobDestinationIDs(jobID int64) ([]int64, error) {
+	rows, err := s.sql.Query(`SELECT destination_id FROM job_destinations WHERE job_id=? ORDER BY destination_id`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("job destinations: %w", err)
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// CreateJob inserts j with its destination links, fills timestamps, and
+// returns it with the new ID.
+func (s *Store) CreateJob(j Job) (Job, error) {
+	now := Now()
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return Job{}, fmt.Errorf("create job: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
+		`INSERT INTO jobs (name, database_id, schedule, dest_local, keep_last, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`,
+		j.Name, j.DatabaseID, j.Schedule, b2i(j.DestLocal), j.KeepLast, now, now)
+	if err != nil {
+		return Job{}, fmt.Errorf("create job: %w", err)
+	}
+	j.ID, _ = res.LastInsertId()
+	for _, did := range j.DestinationIDs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO job_destinations (job_id, destination_id) VALUES (?,?)`, j.ID, did); err != nil {
+			return Job{}, fmt.Errorf("create job links: %w", err)
+		}
+	}
+	j.CreatedAt, j.UpdatedAt = now, now
+	return j, tx.Commit()
+}
+
+// UpdateJob updates all editable fields and replaces the destination links.
+func (s *Store) UpdateJob(j Job) error {
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return fmt.Errorf("update job: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE jobs SET name=?, database_id=?, schedule=?, dest_local=?, keep_last=?, updated_at=? WHERE id=?`,
+		j.Name, j.DatabaseID, j.Schedule, b2i(j.DestLocal), j.KeepLast, Now(), j.ID); err != nil {
+		return fmt.Errorf("update job %d: %w", j.ID, err)
+	}
+	if _, err := tx.Exec(`DELETE FROM job_destinations WHERE job_id=?`, j.ID); err != nil {
+		return fmt.Errorf("update job links: %w", err)
+	}
+	for _, did := range j.DestinationIDs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO job_destinations (job_id, destination_id) VALUES (?,?)`, j.ID, did); err != nil {
+			return fmt.Errorf("update job links: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteJob removes the job; its links and backups cascade.
 func (s *Store) DeleteJob(id int64) error {
 	_, err := s.sql.Exec(`DELETE FROM jobs WHERE id=?`, id)
 	if err != nil {
@@ -201,16 +591,20 @@ func (s *Store) DeleteJob(id int64) error {
 	return nil
 }
 
-// GetJob returns one job or ErrNotFound.
+// GetJob returns one job (with destination links) or ErrNotFound.
 func (s *Store) GetJob(id int64) (Job, error) {
 	j, err := scanJob(s.sql.QueryRow(`SELECT `+jobCols+` FROM jobs WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
+	if err != nil {
+		return Job{}, err
+	}
+	j.DestinationIDs, err = s.jobDestinationIDs(j.ID)
 	return j, err
 }
 
-// ListJobs returns all jobs ordered by name.
+// ListJobs returns all jobs (with destination links) ordered by name.
 func (s *Store) ListJobs() ([]Job, error) {
 	rows, err := s.sql.Query(`SELECT ` + jobCols + ` FROM jobs ORDER BY name`)
 	if err != nil {
@@ -225,7 +619,36 @@ func (s *Store) ListJobs() ([]Job, error) {
 		}
 		jobs = append(jobs, j)
 	}
-	return jobs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range jobs {
+		if jobs[i].DestinationIDs, err = s.jobDestinationIDs(jobs[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	return jobs, nil
+}
+
+// JobDestinations returns the S3 destinations a job stores to.
+func (s *Store) JobDestinations(jobID int64) ([]Destination, error) {
+	rows, err := s.sql.Query(
+		`SELECT `+destinationColsQualified+` FROM destinations d
+		 JOIN job_destinations jd ON jd.destination_id = d.id
+		 WHERE jd.job_id = ? ORDER BY d.name`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("job destinations: %w", err)
+	}
+	defer rows.Close()
+	var out []Destination
+	for rows.Next() {
+		d, err := scanDestination(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 // JobNameExists reports whether another job (id != excludeID) already uses name.
@@ -235,18 +658,17 @@ func (s *Store) JobNameExists(name string, excludeID int64) (bool, error) {
 	return n > 0, err
 }
 
-// ---- backups ----
+// ---- backups (executions) ----
 
-const backupCols = `id, job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, stored_s3, error, restored_at`
+const backupCols = `id, job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, error, restored_at`
 
 func scanBackup(row interface{ Scan(dest ...any) error }) (Backup, error) {
 	var b Backup
-	var storedLocal, storedS3 int
+	var storedLocal int
 	var finished, restored sql.NullString
 	err := row.Scan(&b.ID, &b.JobID, &b.Status, &b.Trigger, &b.StartedAt, &finished,
-		&b.SizeBytes, &b.Filename, &storedLocal, &storedS3, &b.Error, &restored)
+		&b.SizeBytes, &b.Filename, &storedLocal, &b.Error, &restored)
 	b.StoredLocal = storedLocal == 1
-	b.StoredS3 = storedS3 == 1
 	if finished.Valid {
 		b.FinishedAt = &finished.String
 	}
@@ -266,8 +688,6 @@ func (s *Store) CreateBackup(jobID int64, status, trigger, startedAt, filename s
 	}
 	return res.LastInsertId()
 }
-
-// UpdateBackup rewrites the mutable columns of the row with b.ID.
 func (s *Store) UpdateBackup(b Backup) error {
 	finished := sql.NullString{Valid: b.FinishedAt != nil}
 	if b.FinishedAt != nil {
@@ -278,12 +698,68 @@ func (s *Store) UpdateBackup(b Backup) error {
 		restored.String = *b.RestoredAt
 	}
 	_, err := s.sql.Exec(
-		`UPDATE backups SET status=?, finished_at=?, size_bytes=?, stored_local=?, stored_s3=?, error=?, restored_at=? WHERE id=?`,
-		b.Status, finished, b.SizeBytes, b2i(b.StoredLocal), b2i(b.StoredS3), b.Error, restored, b.ID)
+		`UPDATE backups SET status=?, finished_at=?, size_bytes=?, stored_local=?, error=?, restored_at=? WHERE id=?`,
+		b.Status, finished, b.SizeBytes, b2i(b.StoredLocal), b.Error, restored, b.ID)
 	if err != nil {
 		return fmt.Errorf("update backup %d: %w", b.ID, err)
 	}
 	return nil
+}
+
+// MarkBackupDestination records that a backup file is stored on an S3 destination.
+func (s *Store) MarkBackupDestination(backupID, destinationID int64) error {
+	_, err := s.sql.Exec(`INSERT OR IGNORE INTO backup_destinations (backup_id, destination_id) VALUES (?,?)`, backupID, destinationID)
+	if err != nil {
+		return fmt.Errorf("mark backup destination: %w", err)
+	}
+	return nil
+}
+
+// BackupDestinations returns the S3 destinations holding a backup's file.
+func (s *Store) BackupDestinations(backupID int64) ([]Destination, error) {
+	rows, err := s.sql.Query(
+		`SELECT `+destinationColsQualified+` FROM destinations d
+		 JOIN backup_destinations bd ON bd.destination_id = d.id
+		 WHERE bd.backup_id = ? ORDER BY d.name`, backupID)
+	if err != nil {
+		return nil, fmt.Errorf("backup destinations: %w", err)
+	}
+	defer rows.Close()
+	var out []Destination
+	for rows.Next() {
+		d, err := scanDestination(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ListBackupLinks returns every backup -> destination link with the
+// destination resolved, for rendering stored-on chips.
+func (s *Store) ListBackupLinks() ([]BackupLink, error) {
+	rows, err := s.sql.Query(
+		`SELECT bd.backup_id, ` + destinationColsQualified + ` FROM destinations d
+		 JOIN backup_destinations bd ON bd.destination_id = d.id`)
+	if err != nil {
+		return nil, fmt.Errorf("list backup links: %w", err)
+	}
+	defer rows.Close()
+	var out []BackupLink
+	for rows.Next() {
+		var l BackupLink
+		var d Destination
+		var useSSL int
+		if err := rows.Scan(&l.BackupID, &d.ID, &d.Name, &d.Endpoint, &d.Region, &d.Bucket,
+			&d.Prefix, &d.AccessKey, &d.SecretKey, &useSSL, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		d.UseSSL = useSSL == 1
+		l.Destination = d
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // GetBackup returns one backup or ErrNotFound.
@@ -332,6 +808,28 @@ func (s *Store) ListBackups(jobID int64, onlyCompleted bool) ([]Backup, error) {
 	return out, rows.Err()
 }
 
+// ListBackupsForDestination returns the backups stored on a destination,
+// for object cleanup when the destination is deleted.
+func (s *Store) ListBackupsForDestination(destinationID int64) ([]Backup, error) {
+	rows, err := s.sql.Query(
+		`SELECT `+backupCols+` FROM backups
+		 JOIN backup_destinations bd ON bd.backup_id = backups.id
+		 WHERE bd.destination_id = ?`, destinationID)
+	if err != nil {
+		return nil, fmt.Errorf("backups for destination: %w", err)
+	}
+	defer rows.Close()
+	var out []Backup
+	for rows.Next() {
+		b, err := scanBackup(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
 // LatestBackups returns the most recent backup per job, keyed by job ID.
 func (s *Store) LatestBackups() (map[int64]Backup, error) {
 	rows, err := s.sql.Query(
@@ -340,6 +838,7 @@ func (s *Store) LatestBackups() (map[int64]Backup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("latest backups: %w", err)
 	}
+	defer rows.Close()
 	out := make(map[int64]Backup)
 	for rows.Next() {
 		b, err := scanBackup(rows)
@@ -351,50 +850,13 @@ func (s *Store) LatestBackups() (map[int64]Backup, error) {
 	return out, rows.Err()
 }
 
-// DeleteBackup removes a single backups row.
+// DeleteBackup removes a single backups row (destination links cascade).
 func (s *Store) DeleteBackup(id int64) error {
 	_, err := s.sql.Exec(`DELETE FROM backups WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("delete backup %d: %w", id, err)
 	}
 	return nil
-}
-
-// ---- settings ----
-
-// GetSettings returns every settings key/value pair.
-func (s *Store) GetSettings() (map[string]string, error) {
-	rows, err := s.sql.Query(`SELECT key, value FROM settings`)
-	if err != nil {
-		return nil, fmt.Errorf("get settings: %w", err)
-	}
-	defer rows.Close()
-	out := make(map[string]string)
-	for rows.Next() {
-		var k, v string
-		if err := rows.Scan(&k, &v); err != nil {
-			return nil, err
-		}
-		out[k] = v
-	}
-	return out, rows.Err()
-}
-
-// SaveSettings upserts every pair in m.
-func (s *Store) SaveSettings(m map[string]string) error {
-	tx, err := s.sql.Begin()
-	if err != nil {
-		return fmt.Errorf("save settings: %w", err)
-	}
-	defer tx.Rollback()
-	for k, v := range m {
-		if _, err := tx.Exec(
-			`INSERT INTO settings (key, value) VALUES (?,?)
-			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, k, v); err != nil {
-			return fmt.Errorf("save setting %s: %w", k, err)
-		}
-	}
-	return tx.Commit()
 }
 
 // ---- sessions ----

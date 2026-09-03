@@ -1,0 +1,44 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>{{if .Data.IsNew}}New destination{{else}}Edit destination{{end}}</h1>
+</div>
+{{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
+<form class="form" method="post" action="{{.Data.Action}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <p class="hint">S3-compatible bucket used as a job destination (AWS S3, MinIO, Cloudflare R2, …). Objects are stored as <code>{prefix}/{filename}</code>.</p>
+  <label>Name
+    <input name="name" value="{{.Data.Name}}" placeholder="backups-bucket" required>
+  </label>
+  <div class="grid2">
+    <label>Endpoint
+      <input name="endpoint" value="{{.Data.Endpoint}}" placeholder="s3.amazonaws.com" required>
+    </label>
+    <label>Region
+      <input name="region" value="{{.Data.Region}}" placeholder="us-east-1">
+    </label>
+  </div>
+  <div class="grid2">
+    <label>Bucket
+      <input name="bucket" value="{{.Data.Bucket}}" required>
+    </label>
+    <label>Prefix
+      <input name="prefix" value="{{.Data.Prefix}}" placeholder="dumpkeeper">
+    </label>
+  </div>
+  <div class="grid2">
+    <label>Access key
+      <input name="access_key" value="{{.Data.AccessKey}}" required>
+    </label>
+    <label>Secret key
+      <input name="secret_key" type="password" value="{{.Data.SecretKey}}" required>
+    </label>
+  </div>
+  <label class="check">
+    <input type="checkbox" name="use_ssl" value="1" {{if .Data.UseSSL}}checked{{end}}> Use HTTPS
+  </label>
+  <div>
+    <button class="btn btn-primary" type="submit">Save destination</button>
+    <a class="btn" href="/destinations">Cancel</a>
+  </div>
+</form>
+{{end}}

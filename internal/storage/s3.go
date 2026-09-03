@@ -11,45 +11,60 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-// S3 stores backup files in an S3-compatible bucket. The client is built per
-// call from the current global settings, so settings changes take effect
-// without a restart. Objects are stored as {prefix}/{filename}.
+// S3Config carries one S3 destination's settings.
+type S3Config struct {
+	Endpoint  string
+	Region    string
+	Bucket    string
+	Prefix    string
+	AccessKey string
+	SecretKey string
+	UseSSL    bool
+}
+
+func (c S3Config) validate() error {
+	for _, m := range []struct{ name, value string }{
+		{"endpoint", c.Endpoint},
+		{"bucket", c.Bucket},
+		{"access key", c.AccessKey},
+		{"secret key", c.SecretKey},
+	} {
+		if strings.TrimSpace(m.value) == "" {
+			return fmt.Errorf("S3 destination is not fully configured: missing %s", m.name)
+		}
+	}
+	return nil
+}
+
+// S3 stores backup files in one S3-compatible bucket. A client is built per
+// call so destination edits take effect immediately. Objects are stored as
+// {prefix}/{filename}.
 type S3 struct {
-	settings func() (map[string]string, error)
+	cfg S3Config
 }
 
 var _ Store = (*S3)(nil)
 
-// NewS3 returns an S3 store reading its configuration through settings.
-func NewS3(settings func() (map[string]string, error)) *S3 {
-	return &S3{settings: settings}
-}
+// NewS3 returns an S3 store for the given destination config.
+func NewS3(cfg S3Config) *S3 { return &S3{cfg: cfg} }
 
-// conn resolves the current settings and builds a client. It returns the
-// client, bucket, and object-key prefix ("").
-func (s *S3) conn() (*minio.Client, string, string, error) {
-	st, err := s.settings()
-	if err != nil {
-		return nil, "", "", fmt.Errorf("load S3 settings: %w", err)
+func (s *S3) client() (*minio.Client, error) {
+	if err := s.cfg.validate(); err != nil {
+		return nil, err
 	}
-	for _, key := range []string{"s3_endpoint", "s3_bucket", "s3_access_key", "s3_secret_key"} {
-		if st[key] == "" {
-			return nil, "", "", fmt.Errorf("S3 is not fully configured: missing setting %q", key)
-		}
-	}
-	client, err := minio.New(st["s3_endpoint"], &minio.Options{
-		Creds:  credentials.NewStaticV4(st["s3_access_key"], st["s3_secret_key"], ""),
-		Secure: st["s3_use_ssl"] == "1",
-		Region: st["s3_region"],
+	client, err := minio.New(s.cfg.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(s.cfg.AccessKey, s.cfg.SecretKey, ""),
+		Secure: s.cfg.UseSSL,
+		Region: s.cfg.Region,
 	})
 	if err != nil {
-		return nil, "", "", fmt.Errorf("S3 client: %w", err)
+		return nil, fmt.Errorf("S3 client: %w", err)
 	}
-	return client, st["s3_bucket"], strings.Trim(st["s3_prefix"], "/"), nil
+	return client, nil
 }
 
-func (s *S3) objectName(prefix, filename string) string {
-	if prefix != "" {
+func (s *S3) objectName(filename string) string {
+	if prefix := strings.Trim(s.cfg.Prefix, "/"); prefix != "" {
 		return prefix + "/" + filename
 	}
 	return filename
@@ -57,7 +72,7 @@ func (s *S3) objectName(prefix, filename string) string {
 
 // Put uploads srcPath to the bucket as prefix/filename.
 func (s *S3) Put(ctx context.Context, filename, srcPath string) error {
-	client, bucket, prefix, err := s.conn()
+	client, err := s.client()
 	if err != nil {
 		return err
 	}
@@ -70,7 +85,7 @@ func (s *S3) Put(ctx context.Context, filename, srcPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = client.PutObject(ctx, bucket, s.objectName(prefix, filename), f, info.Size(), minio.PutObjectOptions{})
+	_, err = client.PutObject(ctx, s.cfg.Bucket, s.objectName(filename), f, info.Size(), minio.PutObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("S3 put %s: %w", filename, err)
 	}
@@ -79,11 +94,11 @@ func (s *S3) Put(ctx context.Context, filename, srcPath string) error {
 
 // Open downloads prefix/filename; the returned reader streams the object.
 func (s *S3) Open(ctx context.Context, filename string) (io.ReadCloser, int64, error) {
-	client, bucket, prefix, err := s.conn()
+	client, err := s.client()
 	if err != nil {
 		return nil, 0, err
 	}
-	obj, err := client.GetObject(ctx, bucket, s.objectName(prefix, filename), minio.GetObjectOptions{})
+	obj, err := client.GetObject(ctx, s.cfg.Bucket, s.objectName(filename), minio.GetObjectOptions{})
 	if err != nil {
 		return nil, 0, fmt.Errorf("S3 open %s: %w", filename, err)
 	}
@@ -97,11 +112,11 @@ func (s *S3) Open(ctx context.Context, filename string) (io.ReadCloser, int64, e
 
 // Delete removes prefix/filename from the bucket.
 func (s *S3) Delete(ctx context.Context, filename string) error {
-	client, bucket, prefix, err := s.conn()
+	client, err := s.client()
 	if err != nil {
 		return err
 	}
-	err = client.RemoveObject(ctx, bucket, s.objectName(prefix, filename), minio.RemoveObjectOptions{})
+	err = client.RemoveObject(ctx, s.cfg.Bucket, s.objectName(filename), minio.RemoveObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("S3 delete %s: %w", filename, err)
 	}

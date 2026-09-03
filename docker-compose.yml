@@ -1,16 +1,19 @@
-# Local development stack: DumpKeeper + a throwaway PostgreSQL to back up.
+# Local development stack: DumpKeeper + a throwaway PostgreSQL to back up
+# + MinIO for exercising S3 destinations.
 #
 #   docker compose up -d --build
 #
 #   UI:       http://127.0.0.1:18080  (admin / admin123)
 #   Postgres: from the host      -> psql -h 127.0.0.1 -p 15432 -U postgres
 #             in the UI job form -> host "postgres", port 5432
+#   MinIO:    http://127.0.0.1:9000 (minio / minio12345), bucket dk-backups
+#             destination endpoint from DumpKeeper: "minio:9000", HTTPS off
 #
 #   Seed test data:
 #     docker compose exec postgres psql -U postgres -c \
 #       'CREATE TABLE demo AS SELECT generate_series(1,10) i'
 #
-#   Teardown (keeps both data volumes):
+#   Teardown (keeps data volumes):
 #     docker compose down
 
 services:
@@ -28,10 +31,38 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio12345
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  minio-setup:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minio minio12345 &&
+      mc mb --ignore-existing local/dk-backups"
+
   dumpkeeper:
     build: .
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     environment:
       AUTH_LOGIN: admin
@@ -43,4 +74,5 @@ services:
 
 volumes:
   pgdata:
+  miniodata:
   dkdata:

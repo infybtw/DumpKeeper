@@ -22,16 +22,17 @@ type jobsFragmentData struct {
 
 // jobRow is the display shape of one job row.
 type jobRow struct {
-	ID          int64
-	Name        string
-	Target      string
-	Schedule    string
-	DestLocal   bool
-	DestS3      bool
-	KeepLast    int64
-	LastStatus  string
-	LastStarted string
-	LastError   string
+	ID               int64
+	Name             string
+	DatabaseName     string
+	Target           string
+	Schedule         string
+	DestLocal        bool
+	DestinationNames []string
+	KeepLast         int64
+	LastStatus       string
+	LastStarted      string
+	LastError        string
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +53,7 @@ func (s *Server) jobsFragment(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "fragment_jobs.html", "jobs-rows", jobsFragmentData{Jobs: rows, CSRF: sessionFrom(r).CSRF})
 }
 
-// jobRows joins jobs with their most recent backup for display.
+// jobRows joins jobs with their database and most recent execution.
 func (s *Server) jobRows() ([]jobRow, error) {
 	jobs, err := s.db.ListJobs()
 	if err != nil {
@@ -62,16 +63,29 @@ func (s *Server) jobRows() ([]jobRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	databases := map[int64]db.Database{}
+	if dbs, err := s.db.ListDatabases(); err == nil {
+		for _, d := range dbs {
+			databases[d.ID] = d
+		}
+	}
 	rows := make([]jobRow, 0, len(jobs))
 	for _, j := range jobs {
 		row := jobRow{
 			ID:        j.ID,
 			Name:      j.Name,
-			Target:    fmt.Sprintf("%s:%d/%s", j.Host, j.Port, j.DBName),
 			Schedule:  j.Schedule,
 			DestLocal: j.DestLocal,
-			DestS3:    j.DestS3,
 			KeepLast:  j.KeepLast,
+		}
+		if d, ok := databases[j.DatabaseID]; ok {
+			row.DatabaseName = d.Name
+			row.Target = fmt.Sprintf("%s:%d/%s", d.Host, d.Port, d.DBName)
+		}
+		for _, id := range j.DestinationIDs {
+			if d, err := s.db.GetDestination(id); err == nil {
+				row.DestinationNames = append(row.DestinationNames, d.Name)
+			}
 		}
 		if b, ok := latest[j.ID]; ok {
 			row.LastStatus = b.Status
@@ -87,27 +101,29 @@ func (s *Server) jobRows() ([]jobRow, error) {
 
 // jobForm is the display shape of the job create/edit form.
 type jobForm struct {
-	Action    string
-	Error     string
-	ID        int64
-	Name      string
-	Host      string
-	Port      string
-	Username  string
-	Password  string
-	DBName    string
-	SSLMode   string
-	Schedule  string
-	KeepLast  string
-	DestLocal bool
-	DestS3    bool
+	Action   string
+	Error    string
+	ID       int64
+	Name     string
+	Schedule string
+	KeepLast string
+
+	DatabaseID     int64
+	DestLocal      bool
+	DestinationIDs []int64
+
+	Databases    []db.Database
+	Destinations []db.Destination
 }
 
 // IsNew distinguishes create from edit in the template.
 func (f jobForm) IsNew() bool { return f.ID == 0 }
 
-func defaultJobForm(action string) jobForm {
-	return jobForm{Action: action, Port: "5432", SSLMode: "prefer", KeepLast: "7", DestLocal: true}
+func (s *Server) defaultJobForm(action string) jobForm {
+	f := jobForm{Action: action, KeepLast: "7", DestLocal: true}
+	f.Databases, _ = s.db.ListDatabases()
+	f.Destinations, _ = s.db.ListDestinations()
+	return f
 }
 
 func jobAction(id int64) string {
@@ -118,7 +134,10 @@ func jobAction(id int64) string {
 }
 
 func (s *Server) jobNewForm(w http.ResponseWriter, r *http.Request) {
-	f := defaultJobForm("/jobs/new")
+	f := s.defaultJobForm("/jobs/new")
+	if len(f.Databases) == 0 {
+		f.Error = "Create a database first."
+	}
 	s.page(w, r, "job_form.html", "New job", http.StatusOK, f)
 }
 
@@ -149,14 +168,14 @@ func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	f := jobForm{
-		Action: jobAction(job.ID), ID: job.ID,
-		Name: job.Name, Host: job.Host, Port: strconv.Itoa(job.Port),
-		Username: job.Username, Password: job.Password, DBName: job.DBName,
-		SSLMode: job.SSLMode, Schedule: job.Schedule,
-		KeepLast:  strconv.FormatInt(job.KeepLast, 10),
-		DestLocal: job.DestLocal, DestS3: job.DestS3,
-	}
+	f := s.defaultJobForm(jobAction(job.ID))
+	f.ID = job.ID
+	f.Name = job.Name
+	f.Schedule = job.Schedule
+	f.KeepLast = strconv.FormatInt(job.KeepLast, 10)
+	f.DatabaseID = job.DatabaseID
+	f.DestLocal = job.DestLocal
+	f.DestinationIDs = job.DestinationIDs
 	s.page(w, r, "job_form.html", "Edit job", http.StatusOK, f)
 }
 
@@ -198,16 +217,7 @@ func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("delete job: list backups", "job", job.Name, "err", err)
 	}
 	for _, b := range backups {
-		if b.StoredLocal {
-			if err := s.engine.Local.Delete(r.Context(), b.Filename); err != nil {
-				slog.Warn("delete job: remove local file", "file", b.Filename, "err", err)
-			}
-		}
-		if b.StoredS3 {
-			if err := s.engine.S3.Delete(r.Context(), b.Filename); err != nil {
-				slog.Warn("delete job: remove S3 object", "object", b.Filename, "err", err)
-			}
-		}
+		s.deleteBackupFiles(r, b)
 	}
 	if err := s.db.DeleteJob(job.ID); err != nil {
 		redirectTo(w, r, "/", "", "Could not delete job: "+err.Error())
@@ -241,37 +251,36 @@ func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
 // (with entered values) for re-rendering; f.Error != "" means invalid.
 func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 	f := jobForm{
-		ID: id, Action: jobAction(id),
+		ID:        id,
+		Action:    jobAction(id),
 		Name:      strings.TrimSpace(r.FormValue("name")),
-		Host:      strings.TrimSpace(r.FormValue("host")),
-		Port:      strings.TrimSpace(r.FormValue("port")),
-		Username:  strings.TrimSpace(r.FormValue("username")),
-		Password:  r.FormValue("password"),
-		DBName:    strings.TrimSpace(r.FormValue("dbname")),
-		SSLMode:   r.FormValue("sslmode"),
 		Schedule:  strings.TrimSpace(r.FormValue("schedule")),
 		KeepLast:  strings.TrimSpace(r.FormValue("keep_last")),
 		DestLocal: r.FormValue("dest_local") == "1",
-		DestS3:    r.FormValue("dest_s3") == "1",
 	}
+	f.Databases, _ = s.db.ListDatabases()
+	f.Destinations, _ = s.db.ListDestinations()
+	for _, v := range r.Form["dest"] {
+		if did, err := parseID(v); err == nil {
+			f.DestinationIDs = append(f.DestinationIDs, did)
+		}
+	}
+	if did, err := parseID(r.FormValue("database_id")); err == nil {
+		f.DatabaseID = did
+	}
+
 	switch {
 	case f.Name == "":
 		f.Error = "Name is required."
-	case f.Host == "":
-		f.Error = "Host is required."
-	case f.DBName == "":
-		f.Error = "Database name is required."
+	case f.DatabaseID == 0:
+		f.Error = "Choose a database."
+	default:
+		if _, err := s.db.GetDatabase(f.DatabaseID); err != nil {
+			f.Error = "Unknown database."
+		}
 	}
-	port := 0
-	if f.Error == "" {
-		if f.Port == "" {
-			f.Port = "5432"
-		}
-		p, err := strconv.Atoi(f.Port)
-		if err != nil || p < 1 || p > 65535 {
-			f.Error = "Port must be a number between 1 and 65535."
-		}
-		port = p
+	if f.Error == "" && !f.DestLocal && len(f.DestinationIDs) == 0 {
+		f.Error = "Choose at least one destination (local or S3)."
 	}
 	keepLast := int64(0)
 	if f.Error == "" {
@@ -289,9 +298,6 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 			f.Error = "Invalid cron schedule: " + err.Error()
 		}
 	}
-	if f.Error == "" && !f.DestLocal && !f.DestS3 {
-		f.Error = "Choose at least one destination (local or S3)."
-	}
 	if f.Error == "" {
 		exists, err := s.db.JobNameExists(f.Name, id)
 		switch {
@@ -301,15 +307,10 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 			f.Error = "A job with this name already exists."
 		}
 	}
-	if f.SSLMode == "" {
-		f.SSLMode = "prefer"
-	}
 	job := db.Job{
-		ID: id, Name: f.Name, Host: f.Host,
-		Username: f.Username, Password: f.Password, DBName: f.DBName,
-		SSLMode: f.SSLMode, Schedule: f.Schedule,
-		DestLocal: f.DestLocal, DestS3: f.DestS3,
-		Port: port, KeepLast: keepLast,
+		ID: id, Name: f.Name, DatabaseID: f.DatabaseID,
+		Schedule: f.Schedule, DestLocal: f.DestLocal,
+		KeepLast: keepLast, DestinationIDs: f.DestinationIDs,
 	}
 	return job, f
 }
