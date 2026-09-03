@@ -64,6 +64,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /databases/new", s.requireAuth(s.databaseCreate))
 	mux.HandleFunc("GET /databases/{id}/edit", s.requireAuth(s.databaseEditForm))
 	mux.HandleFunc("POST /databases/{id}/edit", s.requireAuth(s.databaseUpdate))
+	mux.HandleFunc("POST /databases/{id}/ping", s.requireAuth(s.databasePing))
 	mux.HandleFunc("POST /databases/{id}/delete", s.requireAuth(s.databaseDelete))
 
 	mux.HandleFunc("GET /destinations", s.requireAuth(s.destinationsList))

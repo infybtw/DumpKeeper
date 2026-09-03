@@ -1,9 +1,15 @@
 package web
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"dumpkeeper/internal/db"
 )
@@ -114,6 +120,51 @@ func (s *Server) databaseUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectTo(w, r, "/databases", "Database "+dbe.Name+" updated.", "")
+}
+
+// databasePing verifies the configured connection by authenticating and
+// executing SELECT 1. pg_isready alone cannot validate credentials or dbname.
+func (s *Server) databasePing(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	dbe, err := s.db.GetDatabase(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "psql",
+		"--no-password",
+		"--tuples-only",
+		"--no-align",
+		"--quiet",
+		"--host="+dbe.Host,
+		"--port="+strconv.Itoa(dbe.Port),
+		"--username="+dbe.Username,
+		"--dbname="+dbe.DBName,
+		"--command=SELECT 1",
+	)
+	cmd.Env = append(os.Environ(), "PGPASSWORD="+dbe.Password, "PGSSLMODE="+dbe.SSLMode)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			redirectTo(w, r, "/databases", "", "Ping timed out after 10 seconds.")
+			return
+		}
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		redirectTo(w, r, "/databases", "", "Could not reach database "+dbe.Name+": "+detail)
+		return
+	}
+	redirectTo(w, r, "/databases", "Database "+dbe.Name+" is reachable.", "")
 }
 
 func (s *Server) databaseDelete(w http.ResponseWriter, r *http.Request) {
