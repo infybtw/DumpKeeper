@@ -1,14 +1,14 @@
 package web
 
 import (
+	"dumpkeeper/internal/backup"
+	"dumpkeeper/internal/db"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
-
-	"dumpkeeper/internal/backup"
-	"dumpkeeper/internal/db"
+	"time"
 )
 
 // executionRow is the display shape of one executions-table row.
@@ -21,6 +21,7 @@ type executionRow struct {
 	Trigger    string
 	StartedAt  string
 	FinishedAt string
+	Duration   string
 	Size       string
 	StoredOn   []string // "local" + destination names
 	HasFile    bool
@@ -179,15 +180,41 @@ func toExecutionRow(b db.Backup, jobName, databaseName string, destNames []strin
 		row.StoredOn = append(row.StoredOn, "local")
 	}
 	row.StoredOn = append(row.StoredOn, destNames...)
+	var started time.Time
 	if t, err := db.ParseTime(b.StartedAt); err == nil {
+		started = t
 		row.StartedAt = t.Local().Format("2006-01-02 15:04:05")
 	}
 	if b.FinishedAt != nil {
 		if t, err := db.ParseTime(*b.FinishedAt); err == nil {
 			row.FinishedAt = t.Local().Format("2006-01-02 15:04:05")
+			if !started.IsZero() {
+				row.Duration = humanDuration(t.Sub(started))
+			}
 		}
+	} else if b.Status == db.StatusRunning && !started.IsZero() {
+		row.Duration = humanDuration(time.Since(started)) + " (running)"
 	}
 	return row
+}
+
+func humanDuration(d time.Duration) string {
+	if d < time.Second {
+		return "< 1 s"
+	}
+	d = d.Round(time.Second)
+	hours := d / time.Hour
+	d %= time.Hour
+	minutes := d / time.Minute
+	d %= time.Minute
+	seconds := d / time.Second
+	if hours > 0 {
+		return fmt.Sprintf("%d h %d m %d s", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%d m %d s", minutes, seconds)
+	}
+	return fmt.Sprintf("%d s", seconds)
 }
 
 // humanSize renders byte counts as B/KB/MB/GB/TB.

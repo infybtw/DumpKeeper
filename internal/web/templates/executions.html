@@ -14,7 +14,7 @@
 </div>
 <table>
   <thead>
-    <tr><th>Job</th><th>Database</th><th>Started</th><th>Trigger</th><th>Status</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
+    <tr><th>Job</th><th>Database</th><th>Started</th><th>Trigger</th><th>Status</th><th>Duration</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
   </thead>
   <tbody>
     {{range .Data.Backups}}
@@ -24,6 +24,7 @@
       <td>{{.StartedAt}}</td>
       <td>{{.Trigger}}</td>
       <td><span class="status status-{{.Status}}">{{.Status}}</span>{{if .FinishedAt}}<div class="hint">{{.FinishedAt}}</div>{{end}}</td>
+      <td>{{if .Duration}}{{.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{.Size}}</td>
       <td>
         {{range .StoredOn}}<span class="chip">{{.}}</span>{{end}}
@@ -43,9 +44,9 @@
         </form>
       </td>
     </tr>
-    {{if .Error}}<tr><td colspan="8" class="row-note">{{.Error}}</td></tr>{{end}}
+    {{if .Error}}<tr><td colspan="9" class="row-note">{{.Error}}</td></tr>{{end}}
     {{else}}
-    <tr><td colspan="8" class="muted">No executions yet.</td></tr>
+    <tr><td colspan="9" class="muted">No executions yet.</td></tr>
     {{end}}
   </tbody>
 </table>
