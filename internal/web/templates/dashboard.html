@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Backup jobs</h1>
+  <a class="btn btn-primary" href="/jobs/new">New job</a>
+</div>
+<table class="jobs">
+  <thead>
+    <tr><th>Name</th><th>Target</th><th>Schedule</th><th>Destinations</th><th>Keep last</th><th>Last backup</th><th>Actions</th></tr>
+  </thead>
+  <tbody hx-get="/fragment/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
+    {{template "jobs-rows" .Data}}
+  </tbody>
+</table>
+{{end}}

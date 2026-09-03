@@ -1,0 +1,48 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Backups</h1>
+  <form class="filter" method="get" action="/backups">
+    <select name="job">
+      <option value="">All jobs</option>
+      {{$sel := .Data.Selected}}
+      {{range .Data.Jobs}}
+      <option value="{{.ID}}" {{if eq .ID $sel}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+    <button class="btn btn-sm" type="submit">Filter</button>
+  </form>
+</div>
+<table>
+  <thead>
+    <tr><th>Job</th><th>Started</th><th>Trigger</th><th>Status</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {{range .Data.Backups}}
+    <tr>
+      <td><a href="/backups?job={{.JobID}}">{{.JobName}}</a></td>
+      <td>{{.StartedAt}}</td>
+      <td>{{.Trigger}}</td>
+      <td><span class="status status-{{.Status}}">{{.Status}}</span>{{if .FinishedAt}}<div class="hint">{{.FinishedAt}}</div>{{end}}</td>
+      <td>{{.Size}}</td>
+      <td>{{if .StoredLocal}}<span class="chip">local</span>{{end}}{{if .StoredS3}}<span class="chip">s3</span>{{end}}</td>
+      <td class="actions">
+        {{if .HasFile}}<a class="btn btn-sm" href="/backups/{{.ID}}/download">Download</a>{{end}}
+        {{if eq .Status "completed"}}
+        <form class="inline" method="post" action="/backups/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this backup?')">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Restore</button>
+        </form>
+        {{end}}
+        <form class="inline" method="post" action="/backups/{{.ID}}/delete" onsubmit="return confirm('Delete this backup and its stored files?')">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{if .Error}}<tr><td colspan="7" class="row-note">{{.Error}}</td></tr>{{end}}
+    {{else}}
+    <tr><td colspan="7" class="muted">No backups yet.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

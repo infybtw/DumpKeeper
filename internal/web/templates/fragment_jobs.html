@@ -1,0 +1,30 @@
+{{define "jobs-rows"}}
+{{range .Jobs}}
+<tr>
+  <td><strong>{{.Name}}</strong></td>
+  <td><code>{{.Target}}</code></td>
+  <td>{{if .Schedule}}<code>{{.Schedule}}</code>{{else}}<span class="muted">manual</span>{{end}}</td>
+  <td>{{if .DestLocal}}<span class="chip">local</span>{{end}}{{if .DestS3}}<span class="chip">s3</span>{{end}}</td>
+  <td>{{.KeepLast}}</td>
+  <td>
+    {{if .LastStatus}}
+      <span class="status status-{{.LastStatus}}" {{if .LastError}}title="{{.LastError}}"{{end}}>{{.LastStatus}}</span>
+      {{if .LastStarted}}<div class="hint">{{.LastStarted}}</div>{{end}}
+    {{else}}<span class="muted">never</span>{{end}}
+  </td>
+  <td class="actions">
+    <form class="inline" method="post" action="/jobs/{{.ID}}/backup">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button class="btn btn-sm" type="submit">Back up now</button>
+    </form>
+    <a class="btn btn-sm" href="/jobs/{{.ID}}/edit">Edit</a>
+    <form class="inline" method="post" action="/jobs/{{.ID}}/delete" onsubmit="return confirm('Delete job {{.Name}} and all its backups?')">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+    </form>
+  </td>
+</tr>
+{{else}}
+<tr><td colspan="7" class="muted">No jobs yet — create one to get started.</td></tr>
+{{end}}
+{{end}}

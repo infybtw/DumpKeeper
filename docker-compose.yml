@@ -1,0 +1,46 @@
+# Local development stack: DumpKeeper + a throwaway PostgreSQL to back up.
+#
+#   docker compose up -d --build
+#
+#   UI:       http://127.0.0.1:18080  (admin / admin123)
+#   Postgres: from the host      -> psql -h 127.0.0.1 -p 15432 -U postgres
+#             in the UI job form -> host "postgres", port 5432
+#
+#   Seed test data:
+#     docker compose exec postgres psql -U postgres -c \
+#       'CREATE TABLE demo AS SELECT generate_series(1,10) i'
+#
+#   Teardown (keeps both data volumes):
+#     docker compose down
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: pgpass
+    ports:
+      - "127.0.0.1:15432:5432" # host access only; 5432 is taken on this machine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  dumpkeeper:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AUTH_LOGIN: admin
+      AUTH_PASSWORD: admin123
+    ports:
+      - "127.0.0.1:18080:8080" # host 8080 is taken by another project
+    volumes:
+      - dkdata:/data
+
+volumes:
+  pgdata:
+  dkdata:

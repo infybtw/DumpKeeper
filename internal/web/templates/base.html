@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · DumpKeeper</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">DumpKeeper</a>
+  <nav>
+    <a href="/">Jobs</a>
+    <a href="/backups">Backups</a>
+    <a href="/settings">Settings</a>
+  </nav>
+  {{if .CSRF}}<form class="inline" method="post" action="/logout">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="btn btn-sm btn-ghost" type="submit">Log out</button>
+  </form>{{end}}
+</header>
+{{with .Msg}}<div class="flash flash-ok">{{.}}</div>{{end}}
+{{with .Err}}<div class="flash flash-err">{{.}}</div>{{end}}
+<main class="container">
+{{template "content" .}}
+</main>
+</body>
+</html>

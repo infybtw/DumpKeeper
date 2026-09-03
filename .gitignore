@@ -1,0 +1,19 @@
+# local build output
+/dumpkeeper
+/dist/
+
+# runtime data (dev runs against ./dk-data)
+/dk-data/
+*.db
+*.db-wal
+*.db-shm
+
+# environment / secrets
+.env
+.env.*
+
+# editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
