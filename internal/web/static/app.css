@@ -8,6 +8,7 @@
   --err: #b91c1c;
   --warn: #b45309;
   --border: #e2e5ea;
+  --sidebar-border: #374151;
   --input-bg: #ffffff;
   --code-bg: #eef1f5;
   --chip-bg: #e0e7ff;
@@ -32,6 +33,7 @@
   --err: #f87171;
   --warn: #fbbf24;
   --border: #374151;
+  --sidebar-border: #4b5563;
   --input-bg: #111827;
   --code-bg: #111827;
   --chip-bg: #312e81;
@@ -69,6 +71,7 @@ body.has-sidebar.sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr
   flex-direction: column;
   gap: 1.5rem;
   background: #111827;
+  border-right: 1px solid var(--sidebar-border);
   color: #d1d5db;
 }
 .sidebar-brand,
