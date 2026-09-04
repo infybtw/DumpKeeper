@@ -95,9 +95,10 @@ body.has-sidebar.sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr
   flex: 0 0 2rem;
   display: inline-grid;
   place-items: center;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+}
+.sidebar-mark svg {
+  width: 1.6rem;
+  height: 1.6rem;
 }
 .sidebar-icon.sidebar-toggle-mark svg {
   width: 1.65rem;
