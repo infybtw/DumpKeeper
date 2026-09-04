@@ -138,22 +138,44 @@ func (s *Server) jobNewForm(w http.ResponseWriter, r *http.Request) {
 	if len(f.Databases) == 0 {
 		f.Error = "Create a database first."
 	}
+	if isHtmx(r) {
+		s.jobModal(w, r, f)
+		return
+	}
 	s.page(w, r, "job_form.html", "New job", http.StatusOK, f)
+}
+
+// jobModal writes the new-job modal fragment. Status 200: htmx 2.x does not
+// swap 4xx responses.
+func (s *Server) jobModal(w http.ResponseWriter, r *http.Request, f jobForm) {
+	s.renderModal(w, http.StatusOK, "fragment_job_form.html", "job-modal", sessionFrom(r).CSRF, f)
 }
 
 func (s *Server) jobCreate(w http.ResponseWriter, r *http.Request) {
 	job, f := s.parseJobForm(r, 0)
 	if f.Error != "" {
+		if isHtmx(r) {
+			s.jobModal(w, r, f)
+			return
+		}
 		s.page(w, r, "job_form.html", "New job", http.StatusBadRequest, f)
 		return
 	}
 	created, err := s.db.CreateJob(job)
 	if err != nil {
 		f.Error = "Could not save job: " + err.Error()
+		if isHtmx(r) {
+			s.jobModal(w, r, f)
+			return
+		}
 		s.page(w, r, "job_form.html", "New job", http.StatusBadRequest, f)
 		return
 	}
 	s.sched.Reschedule(created)
+	if isHtmx(r) {
+		htmxRedirect(w, "/", "Job "+created.Name+" created.", "")
+		return
+	}
 	redirectTo(w, r, "/", "Job "+created.Name+" created.", "")
 }
 

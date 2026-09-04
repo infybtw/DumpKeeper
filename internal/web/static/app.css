@@ -226,6 +226,35 @@ form.inline { display: inline-block; }
 .filter { display: flex; gap: 0.5rem; align-items: center; }
 .filter select { padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font: inherit; }
 .login-wrap { display: grid; place-items: center; min-height: 72vh; }
+dialog.modal {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 1.25rem;
+  width: min(560px, calc(100vw - 2rem));
+  max-height: min(720px, calc(100vh - 3rem));
+  overflow: auto;
+}
+dialog.modal::backdrop { background: rgba(15, 23, 42, 0.55); }
+.modal-title { margin: 0 0 0.75rem; font-size: 1.15rem; }
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--text); }
+.modal .form { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
+.modal .flash { max-width: none; margin: 0 0 0.75rem; }
+.modal-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 .login-card {
   background: var(--card);
   padding: 2rem;

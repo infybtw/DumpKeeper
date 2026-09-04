@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Destinations</h1>
-  <a class="btn btn-primary" href="/destinations/new">New destination</a>
+  <a class="btn btn-primary" href="/destinations/new" hx-get="/destinations/new" hx-target="#modal-body" hx-swap="innerHTML">New destination</a>
 </div>
 <table>
   <thead>
@@ -28,7 +28,7 @@
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="6" class="muted">No destinations yet — jobs can still store locally, or <a href="/destinations/new">add an S3 bucket</a>.</td></tr>
+    <tr><td colspan="6" class="muted">No destinations yet — jobs can still store locally, or <a href="/destinations/new" hx-get="/destinations/new" hx-target="#modal-body" hx-swap="innerHTML">add an S3 bucket</a>.</td></tr>
     {{end}}
   </tbody>
 </table>

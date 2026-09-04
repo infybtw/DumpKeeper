@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Databases</h1>
-  <a class="btn btn-primary" href="/databases/new">New database</a>
+  <a class="btn btn-primary" href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">New database</a>
 </div>
 <table>
   <thead>
@@ -28,7 +28,7 @@
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="6" class="muted">No databases yet — <a href="/databases/new">add one</a> to use it in jobs.</td></tr>
+    <tr><td colspan="6" class="muted">No databases yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to use it in jobs.</td></tr>
     {{end}}
   </tbody>
 </table>

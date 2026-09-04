@@ -5,41 +5,7 @@
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
 <form class="form" method="post" action="{{.Data.Action}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <label>Name
-    <input name="name" value="{{.Data.Name}}" placeholder="prod-db" required>
-  </label>
-  <div class="grid2">
-    <label>Host
-      <input name="host" value="{{.Data.Host}}" placeholder="127.0.0.1" required>
-    </label>
-    <label>Port
-      <input name="port" type="number" min="1" max="65535" value="{{.Data.Port}}">
-    </label>
-  </div>
-  <div class="grid2">
-    <label>Username
-      <input name="username" value="{{.Data.Username}}" required>
-    </label>
-    <label>Password
-      <input name="password" type="password" value="{{.Data.Password}}" required>
-    </label>
-  </div>
-  <div class="grid2">
-    <label>Database
-      <input name="dbname" value="{{.Data.DBName}}" required>
-    </label>
-    <label>SSL mode
-      <select name="sslmode">
-        {{$cur := .Data.SSLMode}}
-        <option value="disable" {{opt "disable" $cur}}>disable</option>
-        <option value="allow" {{opt "allow" $cur}}>allow</option>
-        <option value="prefer" {{opt "prefer" $cur}}>prefer</option>
-        <option value="require" {{opt "require" $cur}}>require</option>
-        <option value="verify-ca" {{opt "verify-ca" $cur}}>verify-ca</option>
-        <option value="verify-full" {{opt "verify-full" $cur}}>verify-full</option>
-      </select>
-    </label>
-  </div>
+  {{template "database-fields" .}}
   <div>
     <button class="btn btn-primary" type="submit">Save database</button>
     <a class="btn" href="/databases">Cancel</a>

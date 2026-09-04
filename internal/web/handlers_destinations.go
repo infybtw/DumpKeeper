@@ -51,19 +51,41 @@ func (s *Server) destinationsList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) destinationNewForm(w http.ResponseWriter, r *http.Request) {
 	f := defaultDestinationForm("/destinations/new")
+	if isHtmx(r) {
+		s.destinationModal(w, r, f)
+		return
+	}
 	s.page(w, r, "destination_form.html", "New destination", http.StatusOK, f)
+}
+
+// destinationModal writes the new-destination modal fragment. Status 200:
+// htmx 2.x does not swap 4xx responses.
+func (s *Server) destinationModal(w http.ResponseWriter, r *http.Request, f destinationForm) {
+	s.renderModal(w, http.StatusOK, "fragment_destination_form.html", "destination-modal", sessionFrom(r).CSRF, f)
 }
 
 func (s *Server) destinationCreate(w http.ResponseWriter, r *http.Request) {
 	d, f := s.parseDestinationForm(r, 0)
 	if f.Error != "" {
+		if isHtmx(r) {
+			s.destinationModal(w, r, f)
+			return
+		}
 		s.page(w, r, "destination_form.html", "New destination", http.StatusBadRequest, f)
 		return
 	}
 	created, err := s.db.CreateDestination(d)
 	if err != nil {
 		f.Error = "Could not save destination: " + err.Error()
+		if isHtmx(r) {
+			s.destinationModal(w, r, f)
+			return
+		}
 		s.page(w, r, "destination_form.html", "New destination", http.StatusBadRequest, f)
+		return
+	}
+	if isHtmx(r) {
+		htmxRedirect(w, "/destinations", "Destination "+created.Name+" created.", "")
 		return
 	}
 	redirectTo(w, r, "/destinations", "Destination "+created.Name+" created.", "")

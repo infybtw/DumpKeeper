@@ -1,0 +1,44 @@
+{{define "job-fields"}}
+  <label>Name
+    <input name="name" value="{{.Data.Name}}" placeholder="nightly-prod" required>
+  </label>
+  <label>Database
+    <select name="database_id">
+      <option value="">— choose a database —</option>
+      {{$cur := .Data.DatabaseID}}
+      {{range .Data.Databases}}
+      <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}} ({{.Host}}:{{.Port}}/{{.DBName}})</option>
+      {{end}}
+    </select>
+    <span class="hint">Manage connection profiles on the <a href="/databases">Databases</a> page.</span>
+  </label>
+  <label>Schedule
+    <input name="schedule" value="{{.Data.Schedule}}" placeholder="0 2 * * *">
+    <span class="hint">Standard 5-field cron: minute hour day-of-month month day-of-week. This example runs daily at 02:00. <a href="https://crontab.guru/examples.html" target="_blank" rel="noopener noreferrer">View cron examples</a>. Leave empty for manual backups only.</span>
+  </label>
+  <div class="grid2">
+    <label>Keep last
+      <input name="keep_last" type="number" min="0" value="{{.Data.KeepLast}}">
+      <span class="hint">Executions to keep for this job. 0 keeps everything.</span>
+    </label>
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="dest_local" value="1" {{if .Data.DestLocal}}checked{{end}}> Local</label>
+      {{range .Data.Destinations}}
+      <label class="check"><input type="checkbox" name="dest" value="{{.ID}}" {{if member .ID $.Data.DestinationIDs}}checked{{end}}> {{.Name}}</label>
+      {{end}}
+    </div>
+  </div>
+{{end}}
+
+{{define "job-modal"}}
+<h2 class="modal-title">New backup job</h2>
+{{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
+<form class="form" method="post" action="{{.Data.Action}}" hx-post="{{.Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  {{template "job-fields" .}}
+  <div class="modal-actions">
+    <button class="btn btn-primary" type="submit">Save job</button>
+    <button class="btn" type="button" data-modal-close>Cancel</button>
+  </div>
+</form>
+{{end}}

@@ -65,19 +65,41 @@ func (s *Server) databasesList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) databaseNewForm(w http.ResponseWriter, r *http.Request) {
 	f := defaultDatabaseForm("/databases/new")
+	if isHtmx(r) {
+		s.databaseModal(w, r, f)
+		return
+	}
 	s.page(w, r, "database_form.html", "New database", http.StatusOK, f)
+}
+
+// databaseModal writes the new-database modal fragment. Status 200: htmx 2.x
+// does not swap 4xx responses.
+func (s *Server) databaseModal(w http.ResponseWriter, r *http.Request, f databaseForm) {
+	s.renderModal(w, http.StatusOK, "fragment_database_form.html", "database-modal", sessionFrom(r).CSRF, f)
 }
 
 func (s *Server) databaseCreate(w http.ResponseWriter, r *http.Request) {
 	dbe, f := s.parseDatabaseForm(r, 0)
 	if f.Error != "" {
+		if isHtmx(r) {
+			s.databaseModal(w, r, f)
+			return
+		}
 		s.page(w, r, "database_form.html", "New database", http.StatusBadRequest, f)
 		return
 	}
 	created, err := s.db.CreateDatabase(dbe)
 	if err != nil {
 		f.Error = "Could not save database: " + err.Error()
+		if isHtmx(r) {
+			s.databaseModal(w, r, f)
+			return
+		}
 		s.page(w, r, "database_form.html", "New database", http.StatusBadRequest, f)
+		return
+	}
+	if isHtmx(r) {
+		htmxRedirect(w, "/databases", "Database "+created.Name+" created.", "")
 		return
 	}
 	redirectTo(w, r, "/databases", "Database "+created.Name+" created.", "")

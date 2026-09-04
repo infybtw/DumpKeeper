@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Backup jobs</h1>
-  <a class="btn btn-primary" href="/jobs/new">New job</a>
+  <a class="btn btn-primary" href="/jobs/new" hx-get="/jobs/new" hx-target="#modal-body" hx-swap="innerHTML">New job</a>
 </div>
 <table class="jobs">
   <thead>

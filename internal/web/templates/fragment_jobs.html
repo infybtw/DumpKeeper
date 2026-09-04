@@ -28,6 +28,6 @@
   </td>
 </tr>
 {{else}}
-<tr><td colspan="7" class="muted">No jobs yet — <a href="/databases/new">add a database</a>, then <a href="/jobs/new">create a job</a>.</td></tr>
+<tr><td colspan="7" class="muted">No jobs yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add a database</a>, then <a href="/jobs/new" hx-get="/jobs/new" hx-target="#modal-body" hx-swap="innerHTML">create a job</a>.</td></tr>
 {{end}}
 {{end}}

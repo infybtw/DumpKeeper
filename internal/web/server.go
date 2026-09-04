@@ -32,6 +32,9 @@ type Server struct {
 
 // route table (session middleware on everything except /login):
 //
+// Create routes (GET/POST */new) serve modal fragments to htmx requests and
+// full pages otherwise.
+//
 //	GET  /login                            POST /login                  POST /logout
 //	GET  /                                 GET  /fragment/jobs
 //	GET  /jobs/new                         POST /jobs/new
@@ -122,7 +125,9 @@ var funcMap = template.FuncMap{
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
 	t, err := template.New("base.html").Funcs(funcMap).ParseFS(files,
-		"templates/base.html", "templates/fragment_jobs.html", "templates/"+name)
+		"templates/base.html", "templates/fragment_jobs.html",
+		"templates/fragment_database_form.html", "templates/fragment_destination_form.html",
+		"templates/fragment_job_form.html", "templates/"+name)
 	if err != nil {
 		slog.Error("web: parse templates", "template", name, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -146,6 +151,54 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, name, title string
 	})
 }
 
+// isHtmx reports whether the request came from an htmx call (modal flows).
+func isHtmx(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+// renderModal writes a create-form modal fragment for an htmx swap. The
+// fragment context reuses pageData: CSRF at the root, the form as Data.
+func (s *Server) renderModal(w http.ResponseWriter, status int, tmpl, execName, csrf string, data any) {
+	t, err := template.New(tmpl).Funcs(funcMap).ParseFS(files, "templates/"+tmpl)
+	if err != nil {
+		slog.Error("web: parse modal", "template", tmpl, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := t.ExecuteTemplate(w, execName, pageData{CSRF: csrf, Data: data}); err != nil {
+		slog.Error("web: render modal", "template", tmpl, "err", err)
+	}
+}
+
+// htmxRedirect asks htmx to navigate the browser to the flash URL after a
+// successful modal submit.
+func htmxRedirect(w http.ResponseWriter, path, msg, errMsg string) {
+	w.Header().Set("HX-Redirect", flashURL(path, msg, errMsg))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// flashURL appends stateless flash query params to path.
+func flashURL(path, msg, errMsg string) string {
+	q := url.Values{}
+	if msg != "" {
+		q.Set("msg", clip(msg, 300))
+	}
+	if errMsg != "" {
+		q.Set("err", clip(errMsg, 300))
+	}
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	return path
+}
+
+// redirectTo redirects with a stateless flash message via query params.
+func redirectTo(w http.ResponseWriter, r *http.Request, path, msg, errMsg string) {
+	http.Redirect(w, r, flashURL(path, msg, errMsg), http.StatusSeeOther)
+}
+
 // renderFragment writes only the named fragment template (htmx poll target).
 func (s *Server) renderFragment(w http.ResponseWriter, tmpl, execName string, data any) {
 	t, err := template.New(tmpl).ParseFS(files, "templates/"+tmpl)
@@ -158,21 +211,6 @@ func (s *Server) renderFragment(w http.ResponseWriter, tmpl, execName string, da
 	if err := t.ExecuteTemplate(w, execName, data); err != nil {
 		slog.Error("web: render fragment", "template", tmpl, "err", err)
 	}
-}
-
-// redirectTo redirects with a stateless flash message via query params.
-func redirectTo(w http.ResponseWriter, r *http.Request, path, msg, errMsg string) {
-	q := url.Values{}
-	if msg != "" {
-		q.Set("msg", clip(msg, 300))
-	}
-	if errMsg != "" {
-		q.Set("err", clip(errMsg, 300))
-	}
-	if enc := q.Encode(); enc != "" {
-		path += "?" + enc
-	}
-	http.Redirect(w, r, path, http.StatusSeeOther)
 }
 
 // clip caps flash text so error tails can't blow up redirect URLs.
