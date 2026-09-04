@@ -1,79 +1,79 @@
 # DumpKeeper
 
-Веб-панель для резервного копирования PostgreSQL: бэкапы `pg_dump` по cron-расписанию, хранение локально и в S3-совместимых хранилищах, восстановление через `pg_restore`, retention «держать последние N».
+A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `pg_restore`, keep-last-N retention.
 
-## Возможности
+## Features
 
-- **Задания (jobs)** — каждое задание target'ит один профиль подключения к PostgreSQL. Расписание — стандартный cron (5 полей, `robfig/cron`); плюс кнопка ручного запуска.
-- **Хранение** — локально в `DATA_DIR/backups` и/или несколько S3-совместимых назначений (MinIO, AWS S3, …). Объекты кладутся как `{prefix}/{filename}`.
-- **Retention** — после каждого успешного запуска удаляются завершённые бэкапы сверх `keep_last` (и локальные файлы, и объекты во всех S3, где они лежат). `keep_last = 0` — без ограничений.
-- **Восстановление** — `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` в базу из профиля задания. Берётся локальная копия, при её отсутствии — S3-назначения по порядку.
-- **История запусков** — статус (`running` / `completed` / `failed`), размер, триггер (`manual`/`cron`), хвост stderr при ошибке, скачивание файла.
-- **Авторизация** — один пользователь (логин/пароль из env), сессии в cookie + CSRF.
-- **Метаданные** — SQLite (чисто-Go драйвер, без CGO). Сами дампы в SQLite не хранятся, только файлы.
-- **Мягкая остановка** — HTTP → cron → ожидание идущих `pg_dump` (обрыв дампа грозит битым файлом).
+- **Jobs** — each job targets one PostgreSQL connection profile. Schedule uses standard cron syntax (5 fields, `robfig/cron`); plus a manual "Back up now" button.
+- **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
+- **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.
+- **Restore** — `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` into the database from the job's profile. Prefers the local copy; otherwise stored S3 destinations are tried in order.
+- **Execution history** — status (`running` / `completed` / `failed`), size, trigger (`manual`/`cron`), stderr tail on failure, file download.
+- **Auth** — a single user (login/password from env), session cookies + CSRF.
+- **Metadata** — SQLite (pure-Go driver, no CGO). Dumps themselves are not stored in SQLite, only referenced as files.
+- **Graceful shutdown** — HTTP → cron → wait for in-flight `pg_dump` runs (killing a dump mid-write risks a corrupt file).
 
-Имя файла дампа: `{job}-{YYYYMMDDTHHMMSSZ}.dump`, формат `pg_dump --format=custom`.
+Dump file name: `{job}-{YYYYMMDDTHHMMSSZ}.dump`, format is `pg_dump --format=custom`.
 
-Частичный успех — не провал: если локальная копия или хотя бы одно S3-назначение сработали, запуск считается `completed`, ошибки отдельных назначений видны в `backups.error`. Провалом считается только «не сохранилось нигде».
+Partial success is not a failure: if the local copy or at least one S3 destination succeeded, the run counts as `completed`, with individual destination failures visible in `backups.error`. Only "stored nowhere" counts as `failed`.
 
-## Быстрый старт (dev-стек из репозитория)
+## Quick start (dev stack from this repo)
 
 ```bash
 docker compose up -d --build
 ```
 
-Поднимаются DumpKeeper + одноразовый PostgreSQL 17 + MinIO:
+Starts DumpKeeper + a throwaway PostgreSQL 17 + MinIO:
 
-| Что | Где | Доступы |
+| What | Where | Credentials |
 |---|---|---|
 | UI | http://127.0.0.1:18080 | `admin` / `admin123` |
-| PostgreSQL (с хоста) | `127.0.0.1:15432` | `postgres` / `pgpass` |
-| PostgreSQL (в формах UI) | host `postgres`, port `5432` | — |
-| MinIO | http://127.0.0.1:9000 | `minio` / `minio12345`, бакет `dk-backups` создан автоматически |
-| S3-назначение (в форме UI) | endpoint `minio:9000`, HTTPS выключен | `minio` / `minio12345` |
+| PostgreSQL (from the host) | `127.0.0.1:15432` | `postgres` / `pgpass` |
+| PostgreSQL (in UI forms) | host `postgres`, port `5432` | — |
+| MinIO | http://127.0.0.1:9000 | `minio` / `minio12345`, bucket `dk-backups` is created automatically |
+| S3 destination (in UI form) | endpoint `minio:9000`, HTTPS off | `minio` / `minio12345` |
 
-Тестовые данные:
+Seed test data:
 
 ```bash
 docker compose exec postgres psql -U postgres -c \
   'CREATE TABLE demo AS SELECT generate_series(1,10) i'
 ```
 
-## Подключение в свой docker-compose
+## Adding to your own docker-compose
 
-Важно: `pg_dump` выполняется **внутри контейнера DumpKeeper**, поэтому база должна быть доступна по сети из него. Указывайте сервисное имя и внутренний порт (например `postgres:5432`), а не проброшенный на хост.
+Important: `pg_dump` runs **inside the DumpKeeper container**, so the database must be reachable from it over the network. Use the service name and the internal port (e.g. `postgres:5432`), not the host-published one.
 
-Вариант 1 — PostgreSQL в том же compose-проекте (сеть общая по умолчанию):
+Variant 1 — PostgreSQL in the same compose project (default network is shared):
 
 ```yaml
 services:
   dumpkeeper:
-    build: /path/to/DumpKeeper   # либо image: dumpkeeper (см. ниже)
+    build: /path/to/DumpKeeper   # or image: dumpkeeper (see below)
     restart: unless-stopped
     environment:
       AUTH_LOGIN: admin
-      AUTH_PASSWORD: change-me   # только эти две переменные обязательны
+      AUTH_PASSWORD: change-me   # the only two required variables
     ports:
       - "8080:8080"
     volumes:
-      - dumpkeeper-data:/data    # метаданные SQLite + локальные бэкапы
-    # Если Postgres в этом же файле — depends_on с healthcheck, как в
-    # docker-compose.yml репозитория, необязателен, но полезен.
+      - dumpkeeper-data:/data    # SQLite metadata + local backups
+    # If Postgres is in the same file, depends_on with a healthcheck (as in
+    # this repo's docker-compose.yml) is optional but useful.
 
 volumes:
   dumpkeeper-data:
 ```
 
-В базе DumpKeeper (в UI) подключение к Postgres задаётся так:
+The PostgreSQL connection in DumpKeeper (via the UI) is then:
 
-| Поле | Значение |
+| Field | Value |
 |---|---|
-| Host | `postgres` (имя сервиса) |
-| Port | `5432` (внутренний порт контейнера, не хостовой) |
-| Username / Password / DB name | ваши |
+| Host | `postgres` (the service name) |
+| Port | `5432` (the container-internal port, not the host-published one) |
+| Username / Password / DB name | yours |
 
-Вариант 2 — база крутится в другом compose-проекте: подключите оба проекта к одной внешней сети.
+Variant 2 — the database runs in another compose project: attach both projects to one external network.
 
 ```yaml
 services:
@@ -82,10 +82,10 @@ services:
 
 networks:
   dbnet:
-    external: true   # второму проекту — та же сеть, host = имя сервиса той БД
+    external: true   # the second project uses the same network; host = that DB's service name
 ```
 
-Вариант 3 — PostgreSQL установлен на хосте: используйте `host.docker.internal` (на Linux добавьте `extra_hosts`).
+Variant 3 — PostgreSQL installed on the host: use `host.docker.internal` (on Linux add `extra_hosts`).
 
 ```yaml
 services:
@@ -94,9 +94,9 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-и в профиле базы Host = `host.docker.internal`, Port = порт PostgreSQL на хосте.
+and in the database profile set Host = `host.docker.internal`, Port = the host's PostgreSQL port.
 
-Образ собирается из этого репозитория. Чтобы не тянуть исходники в чужой compose-файл, соберите образ заранее и используйте его:
+The image is built from this repo. To avoid dragging the sources into someone else's compose file, build the image once and reference it:
 
 ```bash
 docker build -t dumpkeeper /path/to/DumpKeeper
@@ -108,38 +108,38 @@ services:
     image: dumpkeeper
 ```
 
-Для MinIO/S3-назначения в UI указывайте endpoint, доступный из контейнера (`minio:9000`, а не `127.0.0.1:9000`), при необходимости выключите HTTPS.
+For a MinIO/S3 destination in the UI, use an endpoint reachable from the container (`minio:9000`, not `127.0.0.1:9000`) and turn HTTPS off if needed.
 
-## Переменные окружения
+## Environment variables
 
-| Переменная | Обязательна | По умолчанию | Описание |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `AUTH_LOGIN` | да | — | Логин единственного пользователя UI |
-| `AUTH_PASSWORD` | да | — | Его пароль |
-| `LISTEN_ADDR` | нет | `:8080` | Адрес HTTP-сервера |
-| `DATA_DIR` | нет | `/data` | Каталог метаданных и локальных бэкапов |
+| `AUTH_LOGIN` | yes | — | Login of the single UI user |
+| `AUTH_PASSWORD` | yes | — | Their password |
+| `LISTEN_ADDR` | no | `:8080` | HTTP server address |
+| `DATA_DIR` | no | `/data` | Directory for metadata and local backups |
 
-## Структура данных
+## Data layout
 
 ```
 $DATA_DIR/
-├── dumpkeeper.db      # SQLite: базы, назначения, задания, история запусков, сессии
-└── backups/           # локальные копии дампов (*.dump, custom format)
+├── dumpkeeper.db      # SQLite: databases, destinations, jobs, execution history, sessions
+└── backups/           # local dump copies (*.dump, custom format)
 ```
 
-Схема SQLite применяется при старте автоматически; мигрирует раскладку до-2.0 (задания со встроенными кредами и глобальным S3) на текущую.
+The SQLite schema is applied on startup automatically; it also migrates the pre-2.0 layout (jobs with embedded credentials and a single global S3 setting) to the current one.
 
-## Сборка и запуск без Docker
+## Building and running without Docker
 
-Нужны Go 1.25+ и `pg_dump`/`pg_restore` (`postgresql-client`) в `PATH`:
+Requires Go 1.25+ and `pg_dump`/`pg_restore` (`postgresql-client`) in `PATH`:
 
 ```bash
 go build ./cmd/dumpkeeper
 AUTH_LOGIN=admin AUTH_PASSWORD=admin123 DATA_DIR=./data LISTEN_ADDR=:8080 ./dumpkeeper
 ```
 
-## Замечания по эксплуатации
+## Operational notes
 
-- Версия клиента `pg_dump` в образе должна быть **не старше** мажорной версии сервера. Образ (alpine 3.22) несёт клиент PostgreSQL 17 — для серверов 18+ пересоберите образ на более свежем alpine.
-- Пароли к PostgreSQL передаются через `PGPASSWORD`/`PGSSLMODE`, не через argv; креды S3 хранятся в SQLite в открытом виде — ограничивайте доступ к `DATA_DIR`.
-- Порт 8080 отдаёт только UI и healthcheck (`/login`); наружу имеет смысл публиковать за reverse proxy с HTTPS.
+- The `pg_dump` client version in the image must be **no older than** the server's major version. The image (alpine 3.22) ships the PostgreSQL 17 client — for 18+ servers, rebuild the image on a newer alpine.
+- PostgreSQL passwords are passed via `PGPASSWORD`/`PGSSLMODE`, not argv; S3 credentials are stored in SQLite in plain text — restrict access to `DATA_DIR`.
+- Port 8080 serves only the UI and the healthcheck (`/login`); expose it publicly behind a reverse proxy with TLS.
