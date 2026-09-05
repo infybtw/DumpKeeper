@@ -58,6 +58,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 
 	mux.HandleFunc("GET /login", s.loginForm)
 	mux.HandleFunc("POST /login", s.loginSubmit)
+	mux.HandleFunc("POST /logout", s.requireAuth(s.logout))
 	mux.HandleFunc("GET /{$}", s.requireAuth(s.dashboardPage))
 	mux.HandleFunc("GET /fragment/dashboard", s.requireAuth(s.dashboardFragment))
 	mux.HandleFunc("GET /jobs", s.requireAuth(s.jobsPage))
