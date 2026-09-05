@@ -38,7 +38,8 @@ type Server struct {
 // full pages otherwise.
 //
 //	GET  /login                            POST /login                  POST /logout
-//	GET  /                                 GET  /fragment/jobs
+//	GET  / (dashboard)                      GET  /fragment/dashboard
+//	GET  /jobs                              GET  /fragment/jobs
 //	GET  /jobs/new                         POST /jobs/new
 //	GET  /jobs/{id}/edit                   POST /jobs/{id}/edit         POST /jobs/{id}/delete
 //	POST /jobs/{id}/backup
@@ -57,7 +58,9 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("GET /login", s.loginForm)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 
-	mux.HandleFunc("GET /{$}", s.requireAuth(s.dashboard))
+	mux.HandleFunc("GET /{$}", s.requireAuth(s.dashboardPage))
+	mux.HandleFunc("GET /fragment/dashboard", s.requireAuth(s.dashboardFragment))
+	mux.HandleFunc("GET /jobs", s.requireAuth(s.jobsPage))
 	mux.HandleFunc("GET /fragment/jobs", s.requireAuth(s.jobsFragment))
 	mux.HandleFunc("GET /jobs/new", s.requireAuth(s.jobNewForm))
 	mux.HandleFunc("POST /jobs/new", s.requireAuth(s.jobCreate))
@@ -134,7 +137,7 @@ var funcMap = template.FuncMap{
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
 	t, err := template.New("base.html").Funcs(funcMap).ParseFS(files,
 		"templates/base.html", "templates/fragment_jobs.html",
-		"templates/fragment_availability.html",
+		"templates/fragment_availability.html", "templates/fragment_dashboard.html",
 		"templates/fragment_database_form.html", "templates/fragment_destination_form.html",
 		"templates/fragment_job_form.html", "templates/"+name)
 	if err != nil {

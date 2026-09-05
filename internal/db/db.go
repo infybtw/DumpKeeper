@@ -1057,3 +1057,39 @@ func (s *Store) ListIncidents(limit int64) ([]Incident, error) {
 	}
 	return out, rows.Err()
 }
+
+// ---- dashboard stats ----
+
+// CountBackupsByStatus returns the number of backups per status
+// (running/completed/failed).
+func (s *Store) CountBackupsByStatus() (map[string]int64, error) {
+	rows, err := s.sql.Query(`SELECT status, COUNT(*) FROM backups GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("count backups by status: %w", err)
+	}
+	defer rows.Close()
+	counts := map[string]int64{}
+	for rows.Next() {
+		var status string
+		var n int64
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, fmt.Errorf("scan backup count: %w", err)
+		}
+		counts[status] = n
+	}
+	return counts, rows.Err()
+}
+
+// RestorationStats returns how many backups were restored and when the
+// last restore happened (nil when never).
+func (s *Store) RestorationStats() (int64, *string, error) {
+	var n int64
+	var last *string
+	err := s.sql.QueryRow(
+		`SELECT COUNT(*), MAX(restored_at) FROM backups WHERE restored_at IS NOT NULL`,
+	).Scan(&n, &last)
+	if err != nil {
+		return 0, nil, fmt.Errorf("restoration stats: %w", err)
+	}
+	return n, last, nil
+}

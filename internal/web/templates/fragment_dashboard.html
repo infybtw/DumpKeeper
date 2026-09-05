@@ -1,0 +1,58 @@
+{{define "dashboard-content"}}
+<div class="cards">
+  {{range .Cards}}
+  <div class="card">
+    <div class="card-title">{{.Total}} {{.Title}}</div>
+    {{if .Segments}}
+    <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="{{.Title}}">
+      <circle class="donut-track" cx="21" cy="21" r="15.9155"/>
+      {{range .Segments}}<circle class="donut-seg seg-{{.Class}}" cx="21" cy="21" r="15.9155" stroke-dasharray="{{.Pct}} {{.Rest}}" stroke-dashoffset="{{.Offset}}"/>{{end}}
+    </svg>
+    {{else}}
+    <div class="donut-empty">{{.Note}}</div>
+    {{end}}
+    <div class="legend">
+      {{range .Legend}}<span class="legend-item"><span class="dot dot-{{.Class}}"></span>{{.Label}} {{.Value}}</span>{{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+<h2>Database uptime (24h)</h2>
+<table>
+  <thead>
+    <tr><th>Database</th><th>Status</th><th>Uptime</th><th>Last check</th><th>Latency</th></tr>
+  </thead>
+  <tbody>
+    {{range .Uptime}}
+    <tr>
+      <td><strong>{{.Name}}</strong></td>
+      <td><span class="status status-{{.Status}}">{{if eq .Status "never"}}never checked{{else}}{{.Status}}{{end}}</span></td>
+      <td class="text-{{.Class}}">{{.Uptime}}</td>
+      <td>{{.LastCheck}}</td>
+      <td>{{.Latency}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No databases yet.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+<h2>Recent executions</h2>
+<table>
+  <thead>
+    <tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Trigger</th></tr>
+  </thead>
+  <tbody>
+    {{range .Recent}}
+    <tr>
+      <td><strong>{{.Job}}</strong></td>
+      <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
+      <td>{{.Started}}</td>
+      <td>{{.Duration}}</td>
+      <td>{{.Trigger}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No executions yet.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

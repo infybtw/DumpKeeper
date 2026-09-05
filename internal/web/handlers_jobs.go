@@ -35,13 +35,15 @@ type jobRow struct {
 	LastError        string
 }
 
-func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
+// jobsPage renders the backup jobs list (linked from the sidebar; the main
+// page is the dashboard).
+func (s *Server) jobsPage(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.jobRows()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.page(w, r, "dashboard.html", "Jobs", http.StatusOK, jobsFragmentData{Jobs: rows, CSRF: sessionFrom(r).CSRF})
+	s.page(w, r, "jobs.html", "Jobs", http.StatusOK, jobsFragmentData{Jobs: rows, CSRF: sessionFrom(r).CSRF})
 }
 
 func (s *Server) jobsFragment(w http.ResponseWriter, r *http.Request) {

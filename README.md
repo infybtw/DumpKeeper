@@ -3,7 +3,7 @@
 A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `pg_restore`, keep-last-N retention.
 
 ## Features
-- **Jobs** — each job targets one PostgreSQL connection profile. Schedule uses standard cron syntax (5 fields, `robfig/cron`); plus a manual "Back up now" button.
+- **Dashboard** — the main page summarizes databases by availability, jobs by activity, executions by status, and restorations as donut cards, plus per-database uptime over the last 24h and the latest executions. The jobs list lives on its own **Jobs** tab.
 - **Availability monitoring** — DumpKeeper probes every configured database with `psql SELECT 1` on an interval set in **Settings** (default: every minute, `0` disables it). The **Availability** tab shows the current status and latency per database plus a downtime history: every period from the first failed probe to the first success after it, with duration and the last error.
 - **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
 - **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.

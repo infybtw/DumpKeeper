@@ -1,14 +1,8 @@
 {{define "content"}}
 <div class="page-head">
-  <h1>Backup jobs</h1>
-  <a class="btn btn-primary" href="/jobs/new" hx-get="/jobs/new" hx-target="#modal-body" hx-swap="innerHTML">New job</a>
+  <h1>Summary</h1>
 </div>
-<table class="jobs">
-  <thead>
-    <tr><th>Name</th><th>Target</th><th>Schedule</th><th>Destinations</th><th>Keep last</th><th>Last backup</th><th>Actions</th></tr>
-  </thead>
-  <tbody hx-get="/fragment/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
-    {{template "jobs-rows" .Data}}
-  </tbody>
-</table>
+<div hx-get="/fragment/dashboard" hx-trigger="load, every 10s" hx-swap="innerHTML">
+  {{template "dashboard-content" .Data}}
+</div>
 {{end}}
