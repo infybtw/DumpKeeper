@@ -47,8 +47,9 @@ type Server struct {
 //	GET  /databases/{id}/edit              POST /databases/{id}/edit    POST /databases/{id}/delete
 //	GET  /destinations                     GET  /destinations/new       POST /destinations/new
 //	GET  /destinations/{id}/edit           POST /destinations/{id}/edit POST /destinations/{id}/delete
-//	GET  /executions                       POST /executions/{id}/restore
-//	POST /executions/{id}/delete           GET  /executions/{id}/download
+//	GET  /executions                       GET  /executions/{id}/row
+//	POST /executions/{id}/restore          POST /executions/{id}/delete
+//	GET  /executions/{id}/download
 //	GET  /restore                          POST /restore
 //	GET  /availability                     GET  /fragment/availability
 //	GET  /settings                         POST /settings
@@ -87,6 +88,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /destinations/{id}/delete", s.requireAuth(s.destinationDelete))
 
 	mux.HandleFunc("GET /executions", s.requireAuth(s.executionsList))
+	mux.HandleFunc("GET /executions/{id}/row", s.requireAuth(s.executionRowPoll))
 	mux.HandleFunc("POST /executions/{id}/restore", s.requireAuth(s.executionRestore))
 	mux.HandleFunc("POST /executions/{id}/delete", s.requireAuth(s.executionDelete))
 	mux.HandleFunc("GET /executions/{id}/download", s.requireAuth(s.executionDownload))
@@ -135,6 +137,8 @@ var funcMap = template.FuncMap{
 		}
 		return false
 	},
+	// clip caps long text (restore error tails) for row display.
+	"clip": clip,
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
@@ -216,7 +220,7 @@ func redirectTo(w http.ResponseWriter, r *http.Request, path, msg, errMsg string
 
 // renderFragment writes only the named fragment template (htmx poll target).
 func (s *Server) renderFragment(w http.ResponseWriter, tmpl, execName string, data any) {
-	t, err := template.New(tmpl).ParseFS(files, "templates/"+tmpl)
+	t, err := template.New(tmpl).Funcs(funcMap).ParseFS(files, "templates/"+tmpl)
 	if err != nil {
 		slog.Error("web: parse fragment", "template", tmpl, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

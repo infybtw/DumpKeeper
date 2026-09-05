@@ -1,20 +1,20 @@
 # DumpKeeper
 
-A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `pg_restore`, keep-last-N retention.
+A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `psql`, keep-last-N retention.
 
 ## Features
 - **Dashboard** — the main page summarizes databases by availability, jobs by activity, executions by status, and restorations as donut cards, plus per-database uptime over the last 24h and the latest executions. The jobs list lives on its own **Jobs** tab.
 - **Availability monitoring** — DumpKeeper probes every configured database with `psql SELECT 1` on an interval set in **Settings** (default: every minute, `0` disables it). The **Availability** tab shows the current status and latency per database plus a downtime history: every period from the first failed probe to the first success after it, with duration and the last error.
 - **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
 - **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.
-- **Restore** — `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` into the database from the job's profile. Prefers the local copy; otherwise stored S3 destinations are tried in order.
-- **Manual restore page** — upload a custom-format `.dump` on the **Restore** tab and `pg_restore` it into any database profile, with an optional automatic pre-restore dump of the target. Imports and safety dumps are recorded in Executions with triggers `import` / `pre-restore`.
+- **Restore** — the stored `.sql` dump is replayed with `psql --set=ON_ERROR_STOP=1` into the database from the job's profile. Dumps are produced with `--clean --if-exists`, so restore drops and recreates existing objects. Prefers the local copy; otherwise stored S3 destinations are tried in order. Restores run in the background — the executions row shows a live progress bar (phase and %) and the outcome.
+- **Manual restore page** — upload a plain-text `.sql` on the **Restore** tab and replay it into any database profile. Options: an automatic pre-restore dump of the target, create-if-missing (from `template0`), **Clear database before restore** (on by default — drops the existing target, force-closing connections, and recreates it empty from `template0`, so re-imports of dumps without `DROP` statements never hit `already exists`), and **Keep access rights** (replays `OWNER TO`/GRANT/REVOKE as-is; by default they are dropped — the plain-text equivalent of `--no-owner --no-privileges`). Imports and safety dumps are recorded in Executions with triggers `import` / `pre-restore`.
 - **Execution history** — status (`running` / `completed` / `failed`), size, trigger (`manual`/`cron`), stderr tail on failure, file download.
 - **Auth** — a single user (login/password from env), session cookies + CSRF.
 - **Metadata** — SQLite (pure-Go driver, no CGO). Dumps themselves are not stored in SQLite, only referenced as files.
 - **Graceful shutdown** — HTTP → cron → wait for in-flight `pg_dump` runs (killing a dump mid-write risks a corrupt file).
 
-Dump file name: `{job}-{YYYYMMDDTHHMMSSZ}.dump`, format is `pg_dump --format=custom`.
+Dump file name: `{job}-{YYYYMMDDTHHMMSSZ}.sql`, plain-text format (`pg_dump --format=plain --clean --if-exists --no-owner --no-privileges`). Backups created before this change keep the `{job}-*.dump` custom format and still restore, via `pg_restore`.
 
 Partial success is not a failure: if the local copy or at least one S3 destination succeeded, the run counts as `completed`, with individual destination failures visible in `backups.error`. Only "stored nowhere" counts as `failed`.
 
@@ -125,13 +125,13 @@ For a MinIO/S3 destination in the UI, use an endpoint reachable from the contain
 ```
 $DATA_DIR/
 ├── dumpkeeper.db      # SQLite: databases, destinations, jobs, execution history, sessions, availability monitoring, settings
-└── backups/           # local dump copies (*.dump, custom format)
+└── backups/           # local dump copies (*.sql, plain text; legacy *.dump)
 ```
 
 The SQLite schema is applied on startup automatically; it also migrates the pre-2.0 layout (jobs with embedded credentials and a single global S3 setting) to the current one.
 
 ## Building and running without Docker
-Requires Go 1.25+ and `pg_dump`/`pg_restore` (`postgresql-client`) in `PATH`:
+Requires Go 1.25+ and `pg_dump`/`psql`/`createdb` (`postgresql-client`) in `PATH`:
 
 ```bash
 go build ./cmd/dumpkeeper

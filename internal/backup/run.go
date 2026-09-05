@@ -1,6 +1,6 @@
 // Package backup is DumpKeeper's engine: triggering pg_dump runs, storing
-// results on the job's destinations, restoring via pg_restore, and enforcing
-// keep-last-N retention.
+// results on the job's destinations, restoring .sql dumps via psql (legacy
+// .dump via pg_restore), and enforcing keep-last-N retention.
 package backup
 
 import (
@@ -40,6 +40,7 @@ type Engine struct {
 	running  sync.Map      // jobID -> struct{} while a backup is in flight
 	wg       sync.WaitGroup
 	importMu sync.Mutex // serializes uploaded-dump imports and their restores
+	progress sync.Map   // backupID -> *liveProgress while a restore is in flight
 }
 
 // New builds an Engine.
@@ -98,7 +99,7 @@ func (e *Engine) Wait() { e.wg.Wait() }
 // in backups.error.
 func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) error {
 	started := time.Now().UTC()
-	filename := fmt.Sprintf("%s-%s.dump", job.Name, started.Format("20060102T150405Z"))
+	filename := fmt.Sprintf("%s-%s.sql", job.Name, started.Format("20060102T150405Z"))
 	id, err := e.DB.CreateBackup(job.ID, db.StatusRunning, trigger, db.FormatTime(started), filename)
 	if err != nil {
 		return fmt.Errorf("record backup: %w", err)
@@ -116,7 +117,7 @@ func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) erro
 	e.sema <- struct{}{}
 	defer func() { <-e.sema }()
 
-	tmp, err := os.CreateTemp("", "dk-*.dump")
+	tmp, err := os.CreateTemp("", "dk-*.sql")
 	if err != nil {
 		return e.finishFailed(id, fmt.Sprintf("create temp file: %v", err))
 	}

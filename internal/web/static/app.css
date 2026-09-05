@@ -355,3 +355,16 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
   .grid2 { grid-template-columns: 1fr; }
   .checks { padding-top: 0; }
 }
+
+.restore-bar {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.restore-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.6s ease;
+}

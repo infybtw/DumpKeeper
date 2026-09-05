@@ -11,12 +11,15 @@ import (
 	"dumpkeeper/internal/db"
 )
 
-// runDump runs pg_dump for the job's database, writing a custom-format dump
-// to path. Credentials travel via PGPASSWORD/PGSSLMODE so they never appear
-// in argv.
+// runDump runs pg_dump for the job's database, writing a plain-text SQL
+// dump to path. --clean/--if-exists bake DROP statements into the file, so
+// replaying it with psql drops and recreates objects; --no-owner and
+// --no-privileges keep ownership and grants out. Credentials travel via
+// PGPASSWORD/PGSSLMODE so they never appear in argv.
 func runDump(ctx context.Context, dbe db.Database, path string) error {
 	cmd := exec.CommandContext(ctx, "pg_dump",
-		"--format=custom",
+		"--format=plain",
+		"--clean", "--if-exists", "--no-owner", "--no-privileges",
 		"--file="+path,
 		"--host="+dbe.Host,
 		"--port="+strconv.Itoa(dbe.Port),

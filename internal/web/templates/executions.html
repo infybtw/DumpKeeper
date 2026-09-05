@@ -17,37 +17,49 @@
     <tr><th>Job</th><th>Database</th><th>Started</th><th>Trigger</th><th>Status</th><th>Duration</th><th>Size</th><th>Stored on</th><th>Actions</th></tr>
   </thead>
   <tbody>
-    {{range .Data.Backups}}
-    <tr>
-      <td>{{if .JobName}}<a href="/executions?job={{.JobID}}">{{.JobName}}</a>{{else}}<span class="muted">imported</span>{{end}}</td>
-      <td>{{if .Database}}{{.Database}}{{else}}<span class="muted">—</span>{{end}}</td>
-      <td>{{.StartedAt}}</td>
-      <td>{{.Trigger}}</td>
-      <td><span class="status status-{{.Status}}">{{.Status}}</span>{{if .FinishedAt}}<div class="hint">{{.FinishedAt}}</div>{{end}}</td>
-      <td>{{if .Duration}}{{.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
-      <td>{{.Size}}</td>
-      <td>
-        {{range .StoredOn}}<span class="chip">{{.}}</span>{{end}}
-        {{if not .StoredOn}}<span class="muted">nowhere</span>{{end}}
-      </td>
-      <td class="actions">
-        {{if .HasFile}}<a class="btn btn-sm" href="/executions/{{.ID}}/download">Download</a>{{end}}
-        {{if and (eq .Status "completed") .CanRestore}}
-        <form class="inline" method="post" action="/executions/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}">
-          <button class="btn btn-sm" type="submit">Restore</button>
-        </form>
-        {{end}}
-        <form class="inline" method="post" action="/executions/{{.ID}}/delete" onsubmit="return confirm('Delete this execution and its stored files?')">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}">
-          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
-        </form>
-      </td>
-    </tr>
-    {{if .Error}}<tr><td colspan="9" class="row-note">{{.Error}}</td></tr>{{end}}
-    {{else}}
+    {{range .Data.Backups}}{{template "execution_row" .}}{{else}}
     <tr><td colspan="9" class="muted">No executions yet.</td></tr>
     {{end}}
   </tbody>
 </table>
+{{end}}
+
+{{define "execution_row"}}
+<tr{{if .Live}} hx-get="/executions/{{.ID}}/row" hx-trigger="every 1s" hx-swap="outerHTML"{{end}}>
+  <td>{{if .JobName}}<a href="/executions?job={{.JobID}}">{{.JobName}}</a>{{else}}<span class="muted">imported</span>{{end}}</td>
+  <td>{{if .Database}}{{.Database}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{.StartedAt}}</td>
+  <td>{{.Trigger}}</td>
+  <td>
+    <span class="status status-{{.Status}}">{{.Status}}</span>
+    {{if .Progress}}
+      {{if .Progress.Finished}}
+        {{if .Progress.Error}}<div class="hint">restore failed: {{clip .Progress.Error 200}}</div>{{else}}<div class="hint">restore completed</div>{{end}}
+      {{else}}
+        <div class="restore-bar"><div class="restore-bar-fill" style="width: {{.Percent}}%"></div></div>
+        <div class="hint">{{.Progress.Phase}}{{if .Progress.Total}} · {{.Percent}}%{{end}}</div>
+      {{end}}
+    {{else if .FinishedAt}}<div class="hint">{{.FinishedAt}}</div>{{end}}
+  </td>
+  <td>{{if .Duration}}{{.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{.Size}}</td>
+  <td>
+    {{range .StoredOn}}<span class="chip">{{.}}</span>{{end}}
+    {{if not .StoredOn}}<span class="muted">nowhere</span>{{end}}
+  </td>
+  <td class="actions">
+    {{if .HasFile}}<a class="btn btn-sm" href="/executions/{{.ID}}/download">Download</a>{{end}}
+    {{if and (eq .Status "completed") .CanRestore}}
+    <form class="inline" method="post" action="/executions/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn btn-sm" type="submit">Restore</button>
+    </form>
+    {{end}}
+    <form class="inline" method="post" action="/executions/{{.ID}}/delete" onsubmit="return confirm('Delete this execution and its stored files?')">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+    </form>
+  </td>
+</tr>
+{{if .Error}}<tr><td colspan="9" class="row-note">{{.Error}}</td></tr>{{end}}
 {{end}}

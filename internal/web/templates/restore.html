@@ -5,7 +5,7 @@
 {{if not .Data.Databases}}
 <p class="muted">No database profiles yet. <a href="/databases">Create a database profile</a> first — a restore needs a target.</p>
 {{else}}
-<p class="hint">Restoring runs <code>pg_restore --clean</code>: <strong>all objects in the target database are dropped and replaced</strong>. The uploaded dump is kept as a local backup and appears in <a href="/executions">Executions</a>.</p>
+<p class="hint">Restoring replays the uploaded dump with <code>psql</code>: <strong>all objects in the target database are dropped and replaced</strong> (backups contain <code>DROP&nbsp;...&nbsp;IF EXISTS</code> statements). The uploaded dump is kept as a local backup and appears in <a href="/executions">Executions</a>.</p>
 <form class="form" method="post" action="/restore" enctype="multipart/form-data" onsubmit="return confirm('Drop and replace all objects in the selected database?')">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <label>Database profile
@@ -18,12 +18,24 @@
     <span class="hint">The dump is restored into this profile's database.</span>
   </label>
   <label>Dump file
-    <input type="file" name="file" accept=".dump" required>
-    <span class="hint">Custom-format dump from <code>pg_dump --format=custom</code>.</span>
+    <input type="file" name="file" accept=".sql" required>
+    <span class="hint">Plain-text SQL dump from <code>pg_dump</code>; legacy custom-format <code>.dump</code> files are also accepted. By default ownership and GRANT/REVOKE statements are dropped on restore; tick <strong>Keep access rights</strong> to replay them as-is.</span>
   </label>
   <div>
     <label class="check"><input type="checkbox" name="backup_first" value="1" checked> Back up the current database first</label>
-    <span class="hint">Stored as <code>{db}-pre-restore-*.dump</code> in local backups and recorded in Executions. The restore is skipped when this dump fails.</span>
+    <span class="hint">Stored as <code>{db}-pre-restore-*.sql</code> in local backups and recorded in Executions. The restore is skipped when this dump fails.</span>
+  </div>
+  <div>
+    <label class="check"><input type="checkbox" name="create_db" value="1"> Create the database if it does not exist</label>
+    <span class="hint">When the profile's database is missing on the server, it is created from <code>template0</code> before restoring; the pre-restore backup is then skipped (nothing to back up).</span>
+  </div>
+  <div>
+    <label class="check"><input type="checkbox" name="clear_db" value="1" checked> Clear database before restore</label>
+    <span class="hint">Drops the target database (force-closing its connections) and recreates it empty from <code>template0</code>, so the dump replays into a clean slate — no <code>already exists</code> errors on re-imports. The pre-restore backup, if enabled, runs before the drop.</span>
+  </div>
+  <div>
+    <label class="check"><input type="checkbox" name="keep_acls" value="1"> Keep access rights</label>
+    <span class="hint">Replay the dump as-is: <code>OWNER TO</code> and GRANT/REVOKE statements are kept — every role they mention must exist on the target. Unchecked, they are dropped (<code>--no-owner --no-privileges</code>) and objects are owned by the profile's user.</span>
   </div>
   <div>
     <button class="btn btn-primary" type="submit">Restore</button>

@@ -27,6 +27,11 @@ type executionRow struct {
 	HasFile    bool
 	CanRestore bool // job-bound rows only: imports have no job to restore into
 	Error      string
+
+	CSRF     string
+	Progress *backup.RestoreProgress // live/terminal restore state, nil = none
+	Percent  int                     // replayed bytes, when Total is known
+	Live     bool                    // row polls itself while something runs
 }
 
 func (s *Server) executionsList(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +71,7 @@ func (s *Server) executionsList(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]executionRow, 0, len(list))
 	for _, b := range list {
-		rows = append(rows, toExecutionRow(b, jobNames[b.JobID], databases[databaseIDs[b.JobID]], storedOn[b.ID]))
+		rows = append(rows, s.buildRow(r, b, jobNames, databaseIDs, databases, storedOn))
 	}
 	s.page(w, r, "executions.html", "Executions", http.StatusOK, struct {
 		Jobs     []db.Job
@@ -75,6 +80,25 @@ func (s *Server) executionsList(w http.ResponseWriter, r *http.Request) {
 	}{jobs, jobFilter, rows})
 }
 
+// buildRow assembles the display row for b and attaches live restore state.
+// The row polls itself (htmx) while a backup or restore is in flight.
+func (s *Server) buildRow(r *http.Request, b db.Backup, jobNames map[int64]string,
+	databaseIDs map[int64]int64, databases map[int64]string, storedOn map[int64][]string,
+) executionRow {
+	row := toExecutionRow(b, jobNames[b.JobID], databases[databaseIDs[b.JobID]], storedOn[b.ID])
+	row.CSRF = sessionFrom(r).CSRF
+	if p, ok := s.engine.Progress(b.ID); ok {
+		row.Progress = &p
+		if p.Total > 0 {
+			row.Percent = int(float64(p.Replayed) / float64(p.Total) * 100)
+		}
+	}
+	row.Live = b.Status == db.StatusRunning || (row.Progress != nil && !row.Progress.Finished)
+	return row
+}
+
+// executionRestore starts the restore in the background and returns right
+// away; the executions row shows live progress and the outcome.
 func (s *Server) executionRestore(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -86,11 +110,48 @@ func (s *Server) executionRestore(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := s.engine.Restore(r.Context(), b); err != nil {
+	if b.Status != db.StatusCompleted {
+		redirectTo(w, r, "/executions", "", "only completed executions can be restored")
+		return
+	}
+	if err := s.engine.RestoreAsync(b); err != nil {
 		redirectTo(w, r, "/executions", "", err.Error())
 		return
 	}
-	redirectTo(w, r, "/executions", "Restored "+b.Filename+" into the job's database.", "")
+	redirectTo(w, r, "/executions", "Restore started: "+b.Filename+".", "")
+}
+
+// executionRowPoll re-renders one executions table row for htmx polling.
+// While the row is live the response keeps the poll attribute; once nothing
+// runs the attribute is dropped and the polling stops by itself.
+func (s *Server) executionRowPoll(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := s.db.GetBackup(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	jobNames := map[int64]string{}
+	databaseIDs := map[int64]int64{}
+	databases := map[int64]string{}
+	if j, err := s.db.GetJob(b.JobID); err == nil {
+		jobNames[j.ID] = j.Name
+		databaseIDs[j.ID] = j.DatabaseID
+		if d, err := s.db.GetDatabase(j.DatabaseID); err == nil {
+			databases[d.ID] = d.Name
+		}
+	}
+	storedOn := map[int64][]string{}
+	if dests, err := s.db.BackupDestinations(b.ID); err == nil {
+		for _, d := range dests {
+			storedOn[b.ID] = append(storedOn[b.ID], d.Name)
+		}
+	}
+	s.renderFragment(w, "executions.html", "execution_row", s.buildRow(r, b, jobNames, databaseIDs, databases, storedOn))
 }
 
 func (s *Server) executionDelete(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +165,7 @@ func (s *Server) executionDelete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	s.engine.ClearProgress(b.ID)
 	s.deleteBackupFiles(r, b)
 	if err := s.db.DeleteBackup(b.ID); err != nil {
 		redirectTo(w, r, "/executions", "", err.Error())
