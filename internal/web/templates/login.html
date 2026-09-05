@@ -1,8 +1,11 @@
 {{define "content"}}
 <div class="login-wrap">
   <form class="login-card" method="post" action="/login">
-    <h1>DumpKeeper</h1>
-    <p class="muted">PostgreSQL backup console</p>
+    <div class="login-head">
+      <span class="login-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 2.9 7.3 7 8.8 4.1-1.5 7-4.5 7-8.8V5.8L12 3Z"/><path d="M12 8.2v5.6"/><path d="m9.6 11.4 2.4 2.4 2.4-2.4"/></svg></span>
+      <h1>DumpKeeper</h1>
+      <p>PostgreSQL backup console</p>
+    </div>
     {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
     <label>Login
       <input name="login" autocomplete="username" autofocus required>
