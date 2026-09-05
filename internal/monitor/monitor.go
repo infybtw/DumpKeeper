@@ -23,7 +23,7 @@ import (
 const pingTimeout = 10 * time.Second
 
 // DefaultInterval is used when the ping_interval_seconds setting is absent.
-const DefaultInterval = 60 * time.Second
+const DefaultInterval = 15 * time.Minute
 
 // Ping verifies the configured connection by authenticating and executing
 // SELECT 1 via psql (pg_isready alone cannot validate credentials or dbname).
