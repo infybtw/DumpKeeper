@@ -67,8 +67,8 @@ func (s *Server) databaseNewForm(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, "database_form.html", "New database", http.StatusOK, f)
 }
 
-// databaseModal writes the new-database modal fragment. Status 200: htmx 2.x
-// does not swap 4xx responses.
+// databaseModal writes the database modal fragment (create and edit). Status
+// 200: htmx 2.x does not swap 4xx responses.
 func (s *Server) databaseModal(w http.ResponseWriter, r *http.Request, f databaseForm) {
 	s.renderModal(w, http.StatusOK, "fragment_database_form.html", "database-modal", sessionFrom(r).CSRF, f)
 }
@@ -117,6 +117,10 @@ func (s *Server) databaseEditForm(w http.ResponseWriter, r *http.Request) {
 		Username: dbe.Username, Password: dbe.Password, DBName: dbe.DBName,
 		SSLMode: dbe.SSLMode,
 	}
+	if isHtmx(r) {
+		s.databaseModal(w, r, f)
+		return
+	}
 	s.page(w, r, "database_form.html", "Edit database", http.StatusOK, f)
 }
 
@@ -128,12 +132,24 @@ func (s *Server) databaseUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	dbe, f := s.parseDatabaseForm(r, id)
 	if f.Error != "" {
+		if isHtmx(r) {
+			s.databaseModal(w, r, f)
+			return
+		}
 		s.page(w, r, "database_form.html", "Edit database", http.StatusBadRequest, f)
 		return
 	}
 	if err := s.db.UpdateDatabase(dbe); err != nil {
 		f.Error = "Could not save database: " + err.Error()
+		if isHtmx(r) {
+			s.databaseModal(w, r, f)
+			return
+		}
 		s.page(w, r, "database_form.html", "Edit database", http.StatusBadRequest, f)
+		return
+	}
+	if isHtmx(r) {
+		htmxRedirect(w, "/databases", "Database "+dbe.Name+" updated.", "")
 		return
 	}
 	redirectTo(w, r, "/databases", "Database "+dbe.Name+" updated.", "")

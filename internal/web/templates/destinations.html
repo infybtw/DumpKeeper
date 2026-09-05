@@ -16,7 +16,7 @@
       <td>{{if .Prefix}}<code>{{.Prefix}}/</code>{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{if .UseSSL}}yes{{else}}no{{end}}</td>
       <td class="actions">
-        <a class="btn btn-sm" href="/destinations/{{.ID}}/edit">Edit</a>
+        <a class="btn btn-sm" href="/destinations/{{.ID}}/edit" hx-get="/destinations/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
         <form class="inline" method="post" action="/destinations/{{.ID}}/test">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Test connection</button>

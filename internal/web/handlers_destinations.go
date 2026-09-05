@@ -58,8 +58,8 @@ func (s *Server) destinationNewForm(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, "destination_form.html", "New destination", http.StatusOK, f)
 }
 
-// destinationModal writes the new-destination modal fragment. Status 200:
-// htmx 2.x does not swap 4xx responses.
+// destinationModal writes the destination modal fragment (create and edit).
+// Status 200: htmx 2.x does not swap 4xx responses.
 func (s *Server) destinationModal(w http.ResponseWriter, r *http.Request, f destinationForm) {
 	s.renderModal(w, http.StatusOK, "fragment_destination_form.html", "destination-modal", sessionFrom(r).CSRF, f)
 }
@@ -108,6 +108,10 @@ func (s *Server) destinationEditForm(w http.ResponseWriter, r *http.Request) {
 		Bucket: d.Bucket, Prefix: d.Prefix,
 		AccessKey: d.AccessKey, SecretKey: d.SecretKey, UseSSL: d.UseSSL,
 	}
+	if isHtmx(r) {
+		s.destinationModal(w, r, f)
+		return
+	}
 	s.page(w, r, "destination_form.html", "Edit destination", http.StatusOK, f)
 }
 
@@ -119,12 +123,24 @@ func (s *Server) destinationUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	d, f := s.parseDestinationForm(r, id)
 	if f.Error != "" {
+		if isHtmx(r) {
+			s.destinationModal(w, r, f)
+			return
+		}
 		s.page(w, r, "destination_form.html", "Edit destination", http.StatusBadRequest, f)
 		return
 	}
 	if err := s.db.UpdateDestination(d); err != nil {
 		f.Error = "Could not save destination: " + err.Error()
+		if isHtmx(r) {
+			s.destinationModal(w, r, f)
+			return
+		}
 		s.page(w, r, "destination_form.html", "Edit destination", http.StatusBadRequest, f)
+		return
+	}
+	if isHtmx(r) {
+		htmxRedirect(w, "/destinations", "Destination "+d.Name+" updated.", "")
 		return
 	}
 	redirectTo(w, r, "/destinations", "Destination "+d.Name+" updated.", "")

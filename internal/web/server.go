@@ -34,8 +34,8 @@ type Server struct {
 
 // route table (session middleware on everything except /login):
 //
-// Create routes (GET/POST */new) serve modal fragments to htmx requests and
-// full pages otherwise.
+// Create and edit routes (GET/POST */new, */{id}/edit) serve modal fragments
+// to htmx requests and full pages otherwise.
 //
 //	GET  /login                            POST /login                  POST /logout
 //	GET  / (dashboard)                      GET  /fragment/dashboard
@@ -175,8 +175,8 @@ func isHtmx(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-// renderModal writes a create-form modal fragment for an htmx swap. The
-// fragment context reuses pageData: CSRF at the root, the form as Data.
+// renderModal writes a form modal fragment (create or edit) for an htmx swap.
+// The fragment context reuses pageData: CSRF at the root, the form as Data.
 func (s *Server) renderModal(w http.ResponseWriter, status int, tmpl, execName, csrf string, data any) {
 	t, err := template.New(tmpl).Funcs(funcMap).ParseFS(files, "templates/"+tmpl)
 	if err != nil {

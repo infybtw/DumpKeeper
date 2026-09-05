@@ -31,7 +31,7 @@
 {{end}}
 
 {{define "job-modal"}}
-<h2 class="modal-title">New backup job</h2>
+<h2 class="modal-title">{{if .Data.IsNew}}New backup job{{else}}Edit backup job{{end}}</h2>
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
 <form class="form" method="post" action="{{.Data.Action}}" hx-post="{{.Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
   <input type="hidden" name="csrf" value="{{.CSRF}}">

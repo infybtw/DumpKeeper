@@ -16,7 +16,7 @@
       <td>{{.SSLMode}}</td>
       <td>{{.JobCount}}</td>
       <td class="actions">
-        <a class="btn btn-sm" href="/databases/{{.ID}}/edit">Edit</a>
+        <a class="btn btn-sm" href="/databases/{{.ID}}/edit" hx-get="/databases/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
         <form class="inline" method="post" action="/databases/{{.ID}}/ping">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Ping</button>

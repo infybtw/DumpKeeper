@@ -20,7 +20,7 @@
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button class="btn btn-sm" type="submit">Back up now</button>
     </form>
-    <a class="btn btn-sm" href="/jobs/{{.ID}}/edit">Edit</a>
+    <a class="btn btn-sm" href="/jobs/{{.ID}}/edit" hx-get="/jobs/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
     <form class="inline" method="post" action="/jobs/{{.ID}}/delete" onsubmit="return confirm('Delete job {{.Name}} and all its executions?')">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
