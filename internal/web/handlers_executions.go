@@ -25,6 +25,7 @@ type executionRow struct {
 	Size       string
 	StoredOn   []string // "local" + destination names
 	HasFile    bool
+	CanRestore bool // job-bound rows only: imports have no job to restore into
 	Error      string
 }
 
@@ -172,9 +173,10 @@ func toExecutionRow(b db.Backup, jobName, databaseName string, destNames []strin
 	row := executionRow{
 		ID: b.ID, JobID: b.JobID, JobName: jobName, Database: databaseName,
 		Status: b.Status, Trigger: b.Trigger,
-		Error:   b.Error,
-		Size:    humanSize(b.SizeBytes),
-		HasFile: b.Status == db.StatusCompleted && (b.StoredLocal || len(destNames) > 0),
+		CanRestore: b.JobID != 0,
+		Error:      b.Error,
+		Size:       humanSize(b.SizeBytes),
+		HasFile:    b.StoredLocal || len(destNames) > 0,
 	}
 	if b.StoredLocal {
 		row.StoredOn = append(row.StoredOn, "local")

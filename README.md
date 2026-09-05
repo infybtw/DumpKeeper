@@ -8,6 +8,7 @@ A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results g
 - **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
 - **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.
 - **Restore** — `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` into the database from the job's profile. Prefers the local copy; otherwise stored S3 destinations are tried in order.
+- **Manual restore page** — upload a custom-format `.dump` on the **Restore** tab and `pg_restore` it into any database profile, with an optional automatic pre-restore dump of the target. Imports and safety dumps are recorded in Executions with triggers `import` / `pre-restore`.
 - **Execution history** — status (`running` / `completed` / `failed`), size, trigger (`manual`/`cron`), stderr tail on failure, file download.
 - **Auth** — a single user (login/password from env), session cookies + CSRF.
 - **Metadata** — SQLite (pure-Go driver, no CGO). Dumps themselves are not stored in SQLite, only referenced as files.

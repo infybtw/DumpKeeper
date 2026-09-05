@@ -126,3 +126,98 @@ func TestMigrateV1ToV2(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestMigrateV2NullableJob builds the current tables by hand except that
+// backups.job_id is still NOT NULL, then opens it via Open and asserts the
+// migrated shape: old rows keep their job link, the constraint is gone, and
+// CreateBackup accepts jobID 0 (stored as NULL, read back as 0).
+func TestMigrateV2NullableJob(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Exec(`CREATE TABLE databases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 5432,
+  username TEXT NOT NULL, password TEXT NOT NULL,
+  dbname TEXT NOT NULL, sslmode TEXT NOT NULL DEFAULT 'prefer',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)`)
+	old.Exec(`CREATE TABLE jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  database_id INTEGER NOT NULL REFERENCES databases(id),
+  schedule TEXT NOT NULL DEFAULT '',
+  dest_local INTEGER NOT NULL DEFAULT 1,
+  keep_last INTEGER NOT NULL DEFAULT 7,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)`)
+	old.Exec(`CREATE TABLE backups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  started_at TEXT NOT NULL, finished_at TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  filename TEXT NOT NULL,
+  stored_local INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',
+  restored_at TEXT
+)`)
+	must := func(_ sql.Result, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(old.Exec(`INSERT INTO databases (name, host, port, username, password, dbname, created_at, updated_at)
+		VALUES ('prof','h1',5432,'u','p','d','t1','t1')`))
+	must(old.Exec(`INSERT INTO jobs (name, database_id, created_at, updated_at) VALUES ('oldjob',1,'t1','t1')`))
+	must(old.Exec(`INSERT INTO backups (job_id, status, trigger, started_at, filename, stored_local)
+		VALUES (1,'completed','cron','s1','oldjob-s1.dump',1)`))
+	old.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open+migrate: %v", err)
+	}
+	defer store.Close()
+
+	// Constraint dropped.
+	if notNull, err := store.columnNotNull("backups", "job_id"); err != nil || notNull {
+		t.Fatalf("backups.job_id still NOT NULL: %v (%v)", notNull, err)
+	}
+
+	// Existing row intact, job link preserved.
+	b1, err := store.GetBackup(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b1.JobID != 1 || b1.Filename != "oldjob-s1.dump" || b1.Trigger != "cron" {
+		t.Fatalf("old backup row not preserved: %+v", b1)
+	}
+
+	// Job-less insert succeeds and reads back as JobID 0.
+	id, err := store.CreateBackup(0, StatusRunning, "import", Now(), "uploaded-x.dump")
+	if err != nil {
+		t.Fatalf("create job-less backup: %v", err)
+	}
+	b2, err := store.GetBackup(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b2.JobID != 0 || b2.Filename != "uploaded-x.dump" || b2.Trigger != "import" {
+		t.Fatalf("job-less backup wrong: %+v", b2)
+	}
+
+	// Job-filtered listing still matches exactly one row.
+	list, err := store.ListBackups(1, false)
+	if err != nil || len(list) != 1 || list[0].ID != 1 {
+		t.Fatalf("ListBackups(1) = %+v (%v), want [backup 1]", list, err)
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

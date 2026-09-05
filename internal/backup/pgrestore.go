@@ -55,6 +55,20 @@ func (e *Engine) Restore(ctx context.Context, b db.Backup) error {
 		defer os.Remove(path)
 	}
 
+	if err := runRestore(ctx, dbe, path); err != nil {
+		return err
+	}
+
+	restored := db.Now()
+	b.RestoredAt = &restored
+	return e.DB.UpdateBackup(b)
+}
+
+// runRestore replays the custom-format dump at path into dbe via
+// pg_restore: drop and recreate existing objects, keep ownership and grants
+// out, abort on the first error. Credentials travel via PGPASSWORD/PGSSLMODE
+// so they never appear in argv.
+func runRestore(ctx context.Context, dbe db.Database, path string) error {
 	cmd := exec.CommandContext(ctx, "pg_restore",
 		"--host="+dbe.Host,
 		"--port="+strconv.Itoa(dbe.Port),
@@ -73,10 +87,7 @@ func (e *Engine) Restore(ctx context.Context, b db.Backup) error {
 		}
 		return fmt.Errorf("pg_restore: %s", detail)
 	}
-
-	restored := db.Now()
-	b.RestoredAt = &restored
-	return e.DB.UpdateBackup(b)
+	return nil
 }
 
 // fetchFromS3 streams the S3 object into a temp file and returns its path.

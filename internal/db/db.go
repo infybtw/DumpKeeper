@@ -4,6 +4,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -150,7 +151,7 @@ var ddl = []string{
 )`,
 	`CREATE TABLE IF NOT EXISTS backups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
   status TEXT NOT NULL,
   trigger TEXT NOT NULL,
   started_at TEXT NOT NULL, finished_at TEXT,
@@ -209,6 +210,10 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{sql: sq}
 	if err := s.migrateV1(); err != nil {
+		sq.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	if err := s.migrateV2(); err != nil {
 		sq.Close()
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
@@ -335,6 +340,86 @@ func (s *Store) tableHasColumn(table, column string) (bool, error) {
 		}
 	}
 	return false, rows.Err()
+}
+
+// columnNotNull reports whether table.column carries a NOT NULL constraint
+// (false when the column or table is missing).
+func (s *Store) columnNotNull(table, column string) (bool, error) {
+	rows, err := s.sql.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return notNull == 1, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// migrateV2 makes backups.job_id nullable so imports and pre-restore safety
+// dumps are recorded without a job. Detected via the NOT NULL flag; a no-op
+// on databases created with the current schema. SQLite cannot drop a
+// constraint in place, so the table is rebuilt on one pinned connection:
+// PRAGMA foreign_keys is per-connection and a no-op inside a transaction,
+// and dropping backups with foreign keys enforced would fail on
+// backup_destinations child rows.
+func (s *Store) migrateV2() error {
+	notNull, err := s.columnNotNull("backups", "job_id")
+	if err != nil || !notNull {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := s.sql.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op after Commit
+	for _, stmt := range []string{
+		`CREATE TABLE backups_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  started_at TEXT NOT NULL, finished_at TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  filename TEXT NOT NULL,
+  stored_local INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',
+  restored_at TEXT
+)`,
+		`INSERT INTO backups_new SELECT id, job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, error, restored_at FROM backups`,
+		`DROP TABLE backups`,
+		`ALTER TABLE backups_new RENAME TO backups`,
+		`CREATE INDEX idx_backups_job ON backups(job_id, started_at DESC)`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate backups: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON`); err != nil {
+		return fmt.Errorf("re-enable foreign keys: %w", err)
+	}
+	return nil
 }
 
 func b2i(b bool) int {
@@ -675,7 +760,7 @@ func (s *Store) JobNameExists(name string, excludeID int64) (bool, error) {
 
 // ---- backups (executions) ----
 
-const backupCols = `id, job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, error, restored_at`
+const backupCols = `id, COALESCE(job_id, 0) AS job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, error, restored_at`
 
 func scanBackup(row interface{ Scan(dest ...any) error }) (Backup, error) {
 	var b Backup
@@ -693,11 +778,16 @@ func scanBackup(row interface{ Scan(dest ...any) error }) (Backup, error) {
 	return b, err
 }
 
-// CreateBackup inserts a new backups row and returns its ID.
+// CreateBackup inserts a new backups row and returns its ID. jobID 0 means
+// "no job" (imports, pre-restore safety dumps) and is stored as NULL.
 func (s *Store) CreateBackup(jobID int64, status, trigger, startedAt, filename string) (int64, error) {
+	var jid any
+	if jobID != 0 {
+		jid = jobID
+	}
 	res, err := s.sql.Exec(
 		`INSERT INTO backups (job_id, status, "trigger", started_at, filename) VALUES (?,?,?,?,?)`,
-		jobID, status, trigger, startedAt, filename)
+		jid, status, trigger, startedAt, filename)
 	if err != nil {
 		return 0, fmt.Errorf("create backup: %w", err)
 	}

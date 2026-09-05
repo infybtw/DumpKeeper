@@ -19,7 +19,7 @@
   <tbody>
     {{range .Data.Backups}}
     <tr>
-      <td><a href="/executions?job={{.JobID}}">{{.JobName}}</a></td>
+      <td>{{if .JobName}}<a href="/executions?job={{.JobID}}">{{.JobName}}</a>{{else}}<span class="muted">imported</span>{{end}}</td>
       <td>{{if .Database}}{{.Database}}{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{.StartedAt}}</td>
       <td>{{.Trigger}}</td>
@@ -32,7 +32,7 @@
       </td>
       <td class="actions">
         {{if .HasFile}}<a class="btn btn-sm" href="/executions/{{.ID}}/download">Download</a>{{end}}
-        {{if eq .Status "completed"}}
+        {{if and (eq .Status "completed") .CanRestore}}
         <form class="inline" method="post" action="/executions/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Restore</button>

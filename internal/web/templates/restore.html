@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Restore</h1>
+</div>
+{{if not .Data.Databases}}
+<p class="muted">No database profiles yet. <a href="/databases">Create a database profile</a> first — a restore needs a target.</p>
+{{else}}
+<p class="hint">Restoring runs <code>pg_restore --clean</code>: <strong>all objects in the target database are dropped and replaced</strong>. The uploaded dump is kept as a local backup and appears in <a href="/executions">Executions</a>.</p>
+<form class="form" method="post" action="/restore" enctype="multipart/form-data" onsubmit="return confirm('Drop and replace all objects in the selected database?')">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Database profile
+    <select name="database_id" required>
+      <option value="" disabled selected>— select a database —</option>
+      {{range .Data.Databases}}
+      <option value="{{.ID}}">{{.Name}} — {{.Host}}:{{.Port}}/{{.DBName}}</option>
+      {{end}}
+    </select>
+    <span class="hint">The dump is restored into this profile's database.</span>
+  </label>
+  <label>Dump file
+    <input type="file" name="file" accept=".dump" required>
+    <span class="hint">Custom-format dump from <code>pg_dump --format=custom</code>.</span>
+  </label>
+  <div>
+    <label class="check"><input type="checkbox" name="backup_first" value="1" checked> Back up the current database first</label>
+    <span class="hint">Stored as <code>{db}-pre-restore-*.dump</code> in local backups and recorded in Executions. The restore is skipped when this dump fails.</span>
+  </div>
+  <div>
+    <button class="btn btn-primary" type="submit">Restore</button>
+  </div>
+</form>
+{{end}}
+{{end}}

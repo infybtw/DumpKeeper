@@ -18,8 +18,10 @@ import (
 )
 
 const (
-	TriggerManual = "manual"
-	TriggerCron   = "cron"
+	TriggerManual     = "manual"
+	TriggerCron       = "cron"
+	TriggerImport     = "import"      // uploaded dump restored via /restore
+	TriggerPreRestore = "pre-restore" // safety dump taken before an import
 
 	maxConcurrent = 2    // global pg_dump concurrency
 	stderrTailMax = 2048 // stderr tail kept in backups.error
@@ -34,9 +36,10 @@ type Engine struct {
 	DB    *db.Store
 	Local *storage.Local
 
-	sema    chan struct{} // caps concurrent pg_dump runs
-	running sync.Map      // jobID -> struct{} while a backup is in flight
-	wg      sync.WaitGroup
+	sema     chan struct{} // caps concurrent pg_dump runs
+	running  sync.Map      // jobID -> struct{} while a backup is in flight
+	wg       sync.WaitGroup
+	importMu sync.Mutex // serializes uploaded-dump imports and their restores
 }
 
 // New builds an Engine.
