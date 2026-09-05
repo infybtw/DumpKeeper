@@ -14,6 +14,7 @@ import (
 	"dumpkeeper/internal/backup"
 	"dumpkeeper/internal/config"
 	"dumpkeeper/internal/db"
+	"dumpkeeper/internal/monitor"
 	"dumpkeeper/internal/scheduler"
 	"dumpkeeper/internal/storage"
 	"dumpkeeper/internal/web"
@@ -44,6 +45,9 @@ func main() {
 	local := storage.NewLocal(filepath.Join(cfg.DataDir, "backups"))
 	engine := backup.New(store, local)
 
+	mon := monitor.New(store)
+	mon.Start() // probes every configured database; interval from settings
+
 	sched := scheduler.New(engine.Trigger)
 	jobs, err := store.ListJobs()
 	if err != nil {
@@ -54,7 +58,7 @@ func main() {
 		sched.Reschedule(j)
 	}
 
-	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: web.New(cfg, store, engine, sched).Handler()}
+	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: web.New(cfg, store, engine, sched, mon).Handler()}
 	slog.Info("dumpkeeper listening", "addr", cfg.ListenAddr, "data_dir", cfg.DataDir, "jobs", len(jobs))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -77,6 +81,7 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Warn("http shutdown", "err", err)
 	}
+	mon.Stop() // abort in-flight probes before waiting on backups
 	sched.Stop()
 	engine.Wait() // no timeout: interrupting pg_dump risks a corrupt dump
 	slog.Info("shutdown complete")

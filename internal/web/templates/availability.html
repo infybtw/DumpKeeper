@@ -1,0 +1,35 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Availability</h1>
+  <span class="muted">
+    {{if .Data.Enabled}}Checking every {{.Data.Interval}} — <a href="/settings">change</a>{{else}}Monitoring disabled — <a href="/settings">enable it</a>{{end}}
+  </span>
+</div>
+<table>
+  <thead>
+    <tr><th>Database</th><th>Target</th><th>Status</th><th>Last check</th><th>Latency</th></tr>
+  </thead>
+  <tbody hx-get="/fragment/availability" hx-trigger="load, every 10s" hx-swap="innerHTML">
+    {{template "availability-rows" .Data}}
+  </tbody>
+</table>
+<h2>Downtime history</h2>
+<table>
+  <thead>
+    <tr><th>Database</th><th>Started</th><th>Ended</th><th>Duration</th><th>Last error</th></tr>
+  </thead>
+  <tbody>
+    {{range .Data.Incidents}}
+    <tr>
+      <td><strong>{{.DBName}}</strong></td>
+      <td>{{.Started}}</td>
+      <td>{{if .Ended}}{{.Ended}}{{else}}<span class="status status-down">still down</span>{{end}}</td>
+      <td>{{.Duration}}</td>
+      <td>{{.Error}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No downtime recorded.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

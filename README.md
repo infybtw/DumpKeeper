@@ -3,8 +3,8 @@
 A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `pg_restore`, keep-last-N retention.
 
 ## Features
-
 - **Jobs** — each job targets one PostgreSQL connection profile. Schedule uses standard cron syntax (5 fields, `robfig/cron`); plus a manual "Back up now" button.
+- **Availability monitoring** — DumpKeeper probes every configured database with `psql SELECT 1` on an interval set in **Settings** (default: every minute, `0` disables it). The **Availability** tab shows the current status and latency per database plus a downtime history: every period from the first failed probe to the first success after it, with duration and the last error.
 - **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
 - **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.
 - **Restore** — `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` into the database from the job's profile. Prefers the local copy; otherwise stored S3 destinations are tried in order.
@@ -123,14 +123,13 @@ For a MinIO/S3 destination in the UI, use an endpoint reachable from the contain
 
 ```
 $DATA_DIR/
-├── dumpkeeper.db      # SQLite: databases, destinations, jobs, execution history, sessions
+├── dumpkeeper.db      # SQLite: databases, destinations, jobs, execution history, sessions, availability monitoring, settings
 └── backups/           # local dump copies (*.dump, custom format)
 ```
 
 The SQLite schema is applied on startup automatically; it also migrates the pre-2.0 layout (jobs with embedded credentials and a single global S3 setting) to the current one.
 
 ## Building and running without Docker
-
 Requires Go 1.25+ and `pg_dump`/`pg_restore` (`postgresql-client`) in `PATH`:
 
 ```bash

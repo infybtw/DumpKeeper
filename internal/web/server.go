@@ -15,6 +15,7 @@ import (
 	"dumpkeeper/internal/backup"
 	"dumpkeeper/internal/config"
 	"dumpkeeper/internal/db"
+	"dumpkeeper/internal/monitor"
 	"dumpkeeper/internal/scheduler"
 )
 
@@ -27,6 +28,7 @@ type Server struct {
 	db     *db.Store
 	engine *backup.Engine
 	sched  *scheduler.Scheduler
+	mon    *monitor.Monitor
 	mux    *http.ServeMux
 }
 
@@ -46,8 +48,10 @@ type Server struct {
 //	GET  /destinations/{id}/edit           POST /destinations/{id}/edit POST /destinations/{id}/delete
 //	GET  /executions                       POST /executions/{id}/restore
 //	POST /executions/{id}/delete           GET  /executions/{id}/download
-func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *scheduler.Scheduler) *Server {
-	s := &Server{cfg: cfg, db: store, engine: engine, sched: sched, mux: http.NewServeMux()}
+//	GET  /availability                     GET  /fragment/availability
+//	GET  /settings                         POST /settings
+func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *scheduler.Scheduler, mon *monitor.Monitor) *Server {
+	s := &Server{cfg: cfg, db: store, engine: engine, sched: sched, mon: mon, mux: http.NewServeMux()}
 	mux := s.mux
 
 	mux.HandleFunc("GET /login", s.loginForm)
@@ -82,6 +86,10 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /executions/{id}/restore", s.requireAuth(s.executionRestore))
 	mux.HandleFunc("POST /executions/{id}/delete", s.requireAuth(s.executionDelete))
 	mux.HandleFunc("GET /executions/{id}/download", s.requireAuth(s.executionDownload))
+	mux.HandleFunc("GET /availability", s.requireAuth(s.availabilityPage))
+	mux.HandleFunc("GET /fragment/availability", s.requireAuth(s.availabilityFragment))
+	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
+	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
 
 	static, err := fs.Sub(files, "static")
 	if err != nil {
@@ -126,6 +134,7 @@ var funcMap = template.FuncMap{
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
 	t, err := template.New("base.html").Funcs(funcMap).ParseFS(files,
 		"templates/base.html", "templates/fragment_jobs.html",
+		"templates/fragment_availability.html",
 		"templates/fragment_database_form.html", "templates/fragment_destination_form.html",
 		"templates/fragment_job_form.html", "templates/"+name)
 	if err != nil {

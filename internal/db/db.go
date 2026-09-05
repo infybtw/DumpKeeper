@@ -166,6 +166,21 @@ var ddl = []string{
   destination_id INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
   PRIMARY KEY (backup_id, destination_id)
 )`,
+	`CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
+)`,
+	`CREATE TABLE IF NOT EXISTS ping_state (
+  database_id INTEGER PRIMARY KEY REFERENCES databases(id) ON DELETE CASCADE,
+  ok INTEGER NOT NULL, checked_at TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT ''
+)`,
+	`CREATE TABLE IF NOT EXISTS ping_incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  database_id INTEGER NOT NULL REFERENCES databases(id) ON DELETE CASCADE,
+  started_at TEXT NOT NULL, ended_at TEXT,
+  error TEXT NOT NULL DEFAULT ''
+)`,
+	`CREATE INDEX IF NOT EXISTS idx_ping_incidents_db ON ping_incidents(database_id, started_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY, csrf TEXT NOT NULL,
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL
@@ -903,4 +918,142 @@ func (s *Store) DeleteExpiredSessions() error {
 		return fmt.Errorf("delete expired sessions: %w", err)
 	}
 	return nil
+}
+
+// ---- availability monitoring ----
+
+// SettingPingInterval stores the availability probe interval in seconds;
+// "0" disables monitoring.
+const SettingPingInterval = "ping_interval_seconds"
+
+// PingState is the latest availability probe result for a database.
+type PingState struct {
+	DatabaseID int64
+	OK         bool
+	CheckedAt  string
+	DurationMs int64
+	Error      string
+}
+
+// Incident is one downtime period: from the first failed ping to the first
+// success after it. EndedAt is nil while the database is still down.
+type Incident struct {
+	ID         int64
+	DatabaseID int64
+	DBName     string
+	StartedAt  string
+	EndedAt    *string
+	Error      string
+}
+
+// GetSetting returns the raw value for key or ErrNotFound.
+func (s *Store) GetSetting(key string) (string, error) {
+	var v string
+	err := s.sql.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("get setting %s: %w", key, err)
+	}
+	return v, nil
+}
+
+// SetSetting inserts or updates a settings row.
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.sql.Exec(
+		`INSERT INTO settings (key, value) VALUES (?,?)
+  ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+	if err != nil {
+		return fmt.Errorf("set setting %s: %w", key, err)
+	}
+	return nil
+}
+
+// UpsertPingState records the latest probe result for a database.
+func (s *Store) UpsertPingState(st PingState) error {
+	_, err := s.sql.Exec(
+		`INSERT INTO ping_state (database_id, ok, checked_at, duration_ms, error) VALUES (?,?,?,?,?)
+  ON CONFLICT(database_id) DO UPDATE SET
+    ok=excluded.ok, checked_at=excluded.checked_at,
+    duration_ms=excluded.duration_ms, error=excluded.error`,
+		st.DatabaseID, b2i(st.OK), st.CheckedAt, st.DurationMs, st.Error)
+	if err != nil {
+		return fmt.Errorf("upsert ping state: %w", err)
+	}
+	return nil
+}
+
+// ListPingStates returns the latest probe result per database, keyed by ID.
+func (s *Store) ListPingStates() (map[int64]PingState, error) {
+	rows, err := s.sql.Query(`SELECT database_id, ok, checked_at, duration_ms, error FROM ping_state`)
+	if err != nil {
+		return nil, fmt.Errorf("list ping states: %w", err)
+	}
+	defer rows.Close()
+	states := map[int64]PingState{}
+	for rows.Next() {
+		var st PingState
+		var ok int
+		if err := rows.Scan(&st.DatabaseID, &ok, &st.CheckedAt, &st.DurationMs, &st.Error); err != nil {
+			return nil, fmt.Errorf("scan ping state: %w", err)
+		}
+		st.OK = ok == 1
+		states[st.DatabaseID] = st
+	}
+	return states, rows.Err()
+}
+
+// OpenIncident records the start of a downtime period.
+func (s *Store) OpenIncident(databaseID int64, startedAt, errMsg string) error {
+	_, err := s.sql.Exec(
+		`INSERT INTO ping_incidents (database_id, started_at, error) VALUES (?,?,?)`,
+		databaseID, startedAt, errMsg)
+	if err != nil {
+		return fmt.Errorf("open incident: %w", err)
+	}
+	return nil
+}
+
+// CloseOpenIncident ends the still-open downtime period of a database.
+func (s *Store) CloseOpenIncident(databaseID int64, endedAt string) error {
+	_, err := s.sql.Exec(
+		`UPDATE ping_incidents SET ended_at=? WHERE database_id=? AND ended_at IS NULL`,
+		endedAt, databaseID)
+	if err != nil {
+		return fmt.Errorf("close incident: %w", err)
+	}
+	return nil
+}
+
+// TouchOpenIncident refreshes the last seen error of an ongoing downtime.
+func (s *Store) TouchOpenIncident(databaseID int64, errMsg string) error {
+	_, err := s.sql.Exec(
+		`UPDATE ping_incidents SET error=? WHERE database_id=? AND ended_at IS NULL`,
+		errMsg, databaseID)
+	if err != nil {
+		return fmt.Errorf("touch incident: %w", err)
+	}
+	return nil
+}
+
+// ListIncidents returns downtime periods, ongoing ones first, then newest.
+func (s *Store) ListIncidents(limit int64) ([]Incident, error) {
+	rows, err := s.sql.Query(
+		`SELECT i.id, i.database_id, COALESCE(d.name,''), i.started_at, i.ended_at, i.error
+  FROM ping_incidents i LEFT JOIN databases d ON d.id = i.database_id
+  ORDER BY (i.ended_at IS NOT NULL), i.started_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list incidents: %w", err)
+	}
+	defer rows.Close()
+	var out []Incident
+	for rows.Next() {
+		var inc Incident
+		if err := rows.Scan(&inc.ID, &inc.DatabaseID, &inc.DBName, &inc.StartedAt, &inc.EndedAt, &inc.Error); err != nil {
+			return nil, fmt.Errorf("scan incident: %w", err)
+		}
+		out = append(out, inc)
+	}
+	return out, rows.Err()
 }

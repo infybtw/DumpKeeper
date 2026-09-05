@@ -1,0 +1,17 @@
+{{define "availability-rows"}}
+{{range .Rows}}
+<tr>
+  <td><strong>{{.Name}}</strong></td>
+  <td><code>{{.Target}}</code></td>
+  <td>
+    {{if eq .Status "up"}}<span class="status status-up" title="Last check {{.CheckedAt}}">up</span>
+    {{else if eq .Status "down"}}<span class="status status-down" title="{{.Error}}">down</span>
+    {{else}}<span class="muted">never</span>{{end}}
+  </td>
+  <td>{{if .CheckedAt}}{{.CheckedAt}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{if .Latency}}{{.Latency}}{{else}}<span class="muted">—</span>{{end}}</td>
+</tr>
+{{else}}
+<tr><td colspan="5" class="muted">No databases yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to monitor it.</td></tr>
+{{end}}
+{{end}}
