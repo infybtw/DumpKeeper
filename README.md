@@ -50,7 +50,7 @@ Variant 1 — PostgreSQL in the same compose project (default network is shared)
 ```yaml
 services:
   dumpkeeper:
-    image: ghcr.io/infybtw/dumpkeeper  # or  (see below)
+    image: ghcr.io/infybtw/dumpkeeper
     restart: unless-stopped
     environment:
       AUTH_LOGIN: admin
