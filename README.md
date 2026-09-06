@@ -107,26 +107,11 @@ docker build -t dumpkeeper /path/to/DumpKeeper
 services:
   dumpkeeper:
     image: dumpkeeper
+    environment:
+      BASE_PATH: /dumpkeeper   # panel at /dumpkeeper/ instead of the root
 ```
 
 For a MinIO/S3 destination in the UI, use an endpoint reachable from the container (`minio:9000`, not `127.0.0.1:9000`) and turn HTTPS off if needed.
-
-### Panel under a URL prefix (`BASE_PATH`)
-
-To serve the panel under `http://host:8080/dumpkeeper/` instead of the root (typical behind a reverse proxy that routes by path), set `BASE_PATH` on the service — links, static assets, cookies and redirects follow it automatically:
-
-```yaml
-services:
-  dumpkeeper:
-    environment:
-      AUTH_LOGIN: admin
-      AUTH_PASSWORD: change-me
-      BASE_PATH: /dumpkeeper   # panel at http://host:8080/dumpkeeper/
-    ports:
-      - "8080:8080"
-```
-
-With `BASE_PATH` set, the bare root `/` redirects to the panel and unprefixed paths return 404. Omit the variable to keep the panel at the root.
 
 ## Environment variables
 
