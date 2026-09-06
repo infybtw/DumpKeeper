@@ -72,34 +72,7 @@ The PostgreSQL connection in DumpKeeper (via the UI) is then:
 | Port | `5432` (the container-internal port, not the host-published one) |
 | Username / Password / DB name | yours |
 
-Variant 2 — the database runs in another compose project: attach both projects to one external network.
-
-```yaml
-services:
-  dumpkeeper:
-    networks: [dbnet]
-
-networks:
-  dbnet:
-    external: true   # the second project uses the same network; host = that DB's service name
-```
-
-Variant 3 — PostgreSQL installed on the host: use `host.docker.internal` (on Linux add `extra_hosts`).
-
-```yaml
-services:
-  dumpkeeper:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-```
-
-and in the database profile set Host = `host.docker.internal`, Port = the host's PostgreSQL port.
-
-The image is built from this repo. To avoid dragging the sources into someone else's compose file, build the image once and reference it:
-
-```bash
-docker build -t dumpkeeper /path/to/DumpKeeper
-```
+For custom Base path
 
 ```yaml
 services:
