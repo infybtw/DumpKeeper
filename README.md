@@ -1,134 +1,148 @@
 # DumpKeeper
 
-A web panel for PostgreSQL backups: `pg_dump` runs on a cron schedule, results go to local storage and/or S3-compatible stores, restore via `psql`, keep-last-N retention.
+A web UI for PostgreSQL backups. Run backups manually or on a cron schedule, store them locally or in S3-compatible storage, and restore them from the browser.
 
-## Features
-- **Dashboard** — the main page summarizes databases by availability, jobs by activity, executions by status, and restorations as donut cards, plus per-database uptime over the last 24h and the latest executions. The jobs list lives on its own **Jobs** tab.
-- **Availability monitoring** — DumpKeeper probes every configured database with `psql SELECT 1` on an interval set in **Settings** (default: every 15 minutes, `0` disables it). The **Availability** tab shows the current status and latency per database plus a downtime history: every period from the first failed probe to the first success after it, with duration and the last error.
-- **Storage** — locally in `DATA_DIR/backups` and/or several S3-compatible destinations (MinIO, AWS S3, …). Objects are stored as `{prefix}/{filename}`.
-- **Retention** — after every successful run, completed backups beyond `keep_last` are pruned (local files and objects in every S3 destination holding them). `keep_last = 0` means unlimited.
-- **Restore** — the stored `.sql` dump is replayed with `psql --set=ON_ERROR_STOP=1` into the database from the job's profile. Dumps are produced with `--clean --if-exists`, so restore drops and recreates existing objects. Prefers the local copy; otherwise stored S3 destinations are tried in order. Restores run in the background — the executions row shows a live progress bar (phase and %) and the outcome.
-- **Manual restore page** — upload a plain-text `.sql` on the **Restore** tab and replay it into any database profile. Options: an automatic pre-restore dump of the target, create-if-missing (from `template0`), **Clear database before restore** (on by default — drops the existing target, force-closing connections, and recreates it empty from `template0`, so re-imports of dumps without `DROP` statements never hit `already exists`), and **Keep access rights** (replays `OWNER TO`/GRANT/REVOKE as-is; by default they are dropped — the plain-text equivalent of `--no-owner --no-privileges`). Imports and safety dumps are recorded in Executions with triggers `import` / `pre-restore`.
-- **Execution history** — status (`running` / `completed` / `failed`), size, trigger (`manual`/`cron`), stderr tail on failure, file download.
-- **Auth** — a single user (login/password from env), session cookies + CSRF.
-- **Metadata** — SQLite (pure-Go driver, no CGO). Dumps themselves are not stored in SQLite, only referenced as files.
-- **Graceful shutdown** — HTTP → cron → wait for in-flight `pg_dump` runs (killing a dump mid-write risks a corrupt file).
+- Manage database connections, backup jobs, and multiple storage destinations.
+- Keep the latest N backups per job, or keep everything.
+- View execution history, download dumps, and track restore progress.
+- Restore a saved backup or upload a SQL dump.
+- Monitor database availability, latency, and downtime.
 
-Dump file name: `{job}-{YYYYMMDDTHHMMSSZ}.sql`, plain-text format (`pg_dump --format=plain --clean --if-exists --no-owner --no-privileges`). Backups created before this change keep the `{job}-*.dump` custom format and still restore, via `pg_restore`.
+## Try it locally
 
-Partial success is not a failure: if the local copy or at least one S3 destination succeeded, the run counts as `completed`, with individual destination failures visible in `backups.error`. Only "stored nowhere" counts as `failed`.
-
-## Quick start (dev stack from this repo)
+From this repository, run:
 
 ```bash
 docker compose up -d --build
 ```
 
-Starts DumpKeeper + a throwaway PostgreSQL 17 + MinIO:
+Open **http://127.0.0.1:18080/dk/** and sign in with **`admin` / `admin123`**.
 
-| What | Where | Credentials |
-|---|---|---|
-| UI | http://127.0.0.1:18080 | `admin` / `admin123` |
-| PostgreSQL (from the host) | `127.0.0.1:15432` | `postgres` / `pgpass` |
-| PostgreSQL (in UI forms) | host `postgres`, port `5432` | — |
-| MinIO | http://127.0.0.1:9000 | `minio` / `minio12345`, bucket `dk-backups` is created automatically |
-| S3 destination (in UI form) | endpoint `minio:9000`, HTTPS off | `minio` / `minio12345` |
+The included stack runs DumpKeeper, PostgreSQL 17, and MinIO. It is for local testing, not production.
 
-Seed test data:
+Use these values in DumpKeeper:
+
+| Connection | Settings |
+|---|---|
+| PostgreSQL | Host `postgres`, port `5432`, database `postgres`, user `postgres`, password `pgpass` |
+| S3 destination | Endpoint `minio:9000`, HTTPS off, access key `minio`, secret key `minio12345`, bucket `dk-backups` |
+
+The bucket is created automatically. From the host, PostgreSQL is available at `127.0.0.1:15432` and the MinIO S3 API at `http://127.0.0.1:9000`.
+
+To add sample data:
 
 ```bash
 docker compose exec postgres psql -U postgres -c \
   'CREATE TABLE demo AS SELECT generate_series(1,10) i'
 ```
 
-## Adding to your own docker-compose
+## Run with Docker Compose
 
-Important: `pg_dump` runs **inside the DumpKeeper container**, so the database must be reachable from it over the network. Use the service name and the internal port (e.g. `postgres:5432`), not the host-published one.
-
-Variant 1 — PostgreSQL in the same compose project (default network is shared):
+Add this service and volume to your Compose file:
 
 ```yaml
 services:
   dumpkeeper:
-    image: ghcr.io/infybtw/dumpkeeper
+    image: ghcr.io/infybtw/dumpkeeper:latest
     restart: unless-stopped
     environment:
       AUTH_LOGIN: admin
-      AUTH_PASSWORD: change-me   # the only two required variables
+      AUTH_PASSWORD: change-me
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
-      - dumpkeeper-data:/data    # SQLite metadata + local backups
+      - dumpkeeper-data:/data
 
 volumes:
   dumpkeeper-data:
 ```
 
-The PostgreSQL connection in DumpKeeper (via the UI) is then:
+Set a strong password, start the service, and open **http://127.0.0.1:8080**. For remote access, use a reverse proxy with TLS.
 
-| Field | Value |
-|---|---|
-| Host | `postgres` (the service name) |
-| Port | `5432` (the container-internal port, not the host-published one) |
-| Username / Password / DB name | yours |
+**Database and S3 addresses must be reachable from the DumpKeeper container.** For services on the same Compose network, use service names and internal ports, such as `postgres:5432` or `minio:9000`. Do not use `localhost` or host-published ports for those services.
 
-For custom Base path
+## Set up backups
 
-```yaml
-services:
-  dumpkeeper:
-    image: dumpkeeper
-    environment:
-      BASE_PATH: /dumpkeeper   # panel at /dumpkeeper/ instead of the root
-```
+1. Add a connection profile under **Databases**.
+2. If you use S3, add it under **Destinations**.
+3. Create a job under **Jobs**: choose the database, storage destinations, schedule, and **Keep last** count.
 
-For a MinIO/S3 destination in the UI, use an endpoint reachable from the container (`minio:9000`, not `127.0.0.1:9000`) and turn HTTPS off if needed.
+Schedules use five-field cron syntax. For example, `0 2 * * *` runs daily at 02:00. Leave the schedule empty for manual backups only. Set **Keep last** to `0` to disable retention.
 
-## Environment variables
+Backups are plain-text files named `{job}-{YYYYMMDDTHHMMSSZ}.sql`. DumpKeeper runs `pg_dump` with `--clean --if-exists --no-owner --no-privileges`: dumps contain statements to drop and recreate objects, but omit ownership and access rights.
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AUTH_LOGIN` | yes | — | Login of the single UI user |
-| `AUTH_PASSWORD` | yes | — | Their password |
-| `LISTEN_ADDR` | no | `:8080` | HTTP server address |
-| `DATA_DIR` | no | `/data` | Directory for metadata and local backups |
-| `BASE_PATH` | no | — | URL prefix for the whole UI, e.g. `/dumpkeeper` — pages, assets, links, cookies and redirects follow it |
+A run is marked `completed` if at least one local or S3 copy is saved, even if other destinations fail. Destination errors are recorded with the execution. After each completed run, retention removes older completed backups from local storage and all S3 destinations that hold them.
 
-## Data layout
+## Restore a database
 
-```
+**Restores can destroy existing data. Check the target database before starting.**
+
+To restore a saved job backup, use **Executions**. It restores into the database configured for that job, using the local copy first and S3 if needed. SQL dumps run through `psql`, which stops on the first error. Older custom-format `.dump` backups use `pg_restore`.
+
+To upload a plain-text `.sql` dump, open **Restore** and select a database profile. The options are:
+
+| Option | Default | Behavior |
+|---|---|---|
+| Back up the current database first | On | Saves a local safety dump before restoring. If the backup fails, the restore is skipped. |
+| Create the database if it does not exist | Off | Creates the missing database from `template0`; skips the safety dump. |
+| Clear database before restore | On | Disconnects clients, drops the target database, and recreates it from `template0`. |
+| Keep access rights | Off | Preserves ownership and GRANT/REVOKE statements. Referenced roles must already exist. |
+
+The upload and any safety dump are saved locally and listed in **Executions**. Restores run in the background, with progress and results shown there.
+
+## Availability monitoring
+
+DumpKeeper checks each database with `psql SELECT 1` every 15 minutes by default. Change the interval in **Settings**, or set it to `0` to disable checks.
+
+**Availability** shows status, latency, and downtime history. **Dashboard** shows a summary, uptime over the last 24 hours, and recent executions.
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `AUTH_LOGIN` | Required | Username for the single UI account |
+| `AUTH_PASSWORD` | Required | Password for that account |
+| `LISTEN_ADDR` | `:8080` | HTTP listen address |
+| `DATA_DIR` | `/data` | Metadata and local backup directory |
+| `BASE_PATH` | Empty | URL prefix, such as `/dumpkeeper` |
+
+With `BASE_PATH=/dumpkeeper`, the UI is served at `/dumpkeeper/` and `/` redirects there. Use this when a reverse proxy routes by path.
+
+### Stored data
+
+```text
 $DATA_DIR/
-├── dumpkeeper.db      # SQLite: databases, destinations, jobs, execution history, sessions, availability monitoring, settings
-└── backups/           # local dump copies (*.sql, plain text; legacy *.dump)
+├── dumpkeeper.db   # SQLite: configuration, history, and sessions
+└── backups/        # Local dump files
 ```
 
-The SQLite schema is applied on startup automatically; it also migrates the pre-2.0 layout (jobs with embedded credentials and a single global S3 setting) to the current one.
+Database setup and migrations run automatically on startup. Keep `/data` on a persistent volume.
 
-### Configuration backup
+**SQLite contains saved PostgreSQL passwords, S3 credentials, and session tokens in plain text. Restrict access to the data directory and configuration backups.**
 
-In **Settings → Configuration backup**, click **Download configuration backup** to download `dumpkeeper-config-{YYYYMMDDTHHMMSSZ}.db`. DumpKeeper creates a consistent SQLite snapshot with `VACUUM INTO`, including committed WAL changes, without stopping the application. The download requires an authenticated session and a valid CSRF token; temporary snapshot files are removed after the request.
+### Back up and restore configuration
 
-The snapshot includes database profiles, destinations, jobs, settings, execution and availability history, and sessions. **It contains saved PostgreSQL passwords, S3 credentials, and session tokens in plain text: store it securely.** PostgreSQL dump files (local or S3) and environment variables, including `AUTH_LOGIN` and `AUTH_PASSWORD`, are not included.
+In **Settings → Configuration backup**, click **Download configuration backup**. This creates a consistent SQLite snapshot without stopping DumpKeeper.
 
-To restore the Keeper configuration:
+The snapshot includes database profiles, destinations, jobs, settings, execution and availability history, and sessions. It does **not** include dump files or environment variables such as `AUTH_LOGIN` and `AUTH_PASSWORD`.
+
+To restore it:
 
 1. Stop DumpKeeper.
-2. Move the existing `DATA_DIR/dumpkeeper.db` and any matching `dumpkeeper.db-wal` / `dumpkeeper.db-shm` files to a safe location together. Do not leave old sidecar files beside the restored database.
-3. Copy the downloaded snapshot to `DATA_DIR/dumpkeeper.db`, with ownership and permissions that allow DumpKeeper to read and write it.
-4. Restore local dump files to `DATA_DIR/backups` separately if needed, and provide the required environment variables.
-5. Start DumpKeeper. The restored jobs and schedules become active again; history entries still depend on their referenced local or S3 dump files.
+2. Move the existing `DATA_DIR/dumpkeeper.db` and any `dumpkeeper.db-wal` / `dumpkeeper.db-shm` files to a safe location together. Do not leave old sidecar files beside the restored database.
+3. Copy the snapshot to `DATA_DIR/dumpkeeper.db` and make sure DumpKeeper can read and write it.
+4. Restore local dumps to `DATA_DIR/backups` separately if needed, and set the required environment variables.
+5. Start DumpKeeper. Restored schedules become active immediately; history entries still need their referenced local or S3 dump files.
 
-## Building and running without Docker
-Requires Go 1.25+ and `pg_dump`/`psql`/`createdb` (`postgresql-client`) in `PATH`:
+## Run without Docker
+
+Requires Go 1.25+ and PostgreSQL client tools (`pg_dump`, `psql`, `createdb`, and `pg_restore`) in `PATH`.
 
 ```bash
 go build ./cmd/dumpkeeper
-AUTH_LOGIN=admin AUTH_PASSWORD=admin123 DATA_DIR=./data LISTEN_ADDR=:8080 ./dumpkeeper
+AUTH_LOGIN=admin AUTH_PASSWORD=change-me DATA_DIR=./data LISTEN_ADDR=127.0.0.1:8080 ./dumpkeeper
 ```
 
-## Operational notes
+Use a strong password instead of `change-me`.
 
-- The `pg_dump` client version in the image must be **no older than** the server's major version. The image (alpine 3.22) ships the PostgreSQL 17 client — for 18+ servers, rebuild the image on a newer alpine.
-- PostgreSQL passwords are passed via `PGPASSWORD`/`PGSSLMODE`, not argv; S3 credentials are stored in SQLite in plain text — restrict access to `DATA_DIR`.
-- Port 8080 serves only the UI and the healthcheck (`/`); expose it publicly behind a reverse proxy with TLS.
-- Path prefix: set `BASE_PATH=/dumpkeeper` to serve the panel under `http://host:8080/dumpkeeper/` (handy behind a reverse proxy routing by path). With a prefix set, the bare root `/` redirects to it and unprefixed paths 404; the healthcheck hits `/`, which works with and without a prefix.
+The `pg_dump` major version must be at least as new as the PostgreSQL server. The Dockerfile uses Alpine 3.22 with PostgreSQL 17 client tools; for PostgreSQL 18 or newer, rebuild with a base image that provides a matching or newer client.
