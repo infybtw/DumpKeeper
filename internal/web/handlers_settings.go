@@ -2,7 +2,10 @@ package web
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +41,39 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.redirectTo(w, r, "/settings",
 		"Monitoring every "+strconv.FormatInt(minutes, 10)+" minute(s); first check runs now.", "")
+}
+
+func (s *Server) settingsBackup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	// CreateTemp reserves a unique file with mode 0600: the snapshot contains
+	// database passwords, S3 credentials, and session tokens.
+	f, err := os.CreateTemp("", "dumpkeeper-config-*.db")
+	if err != nil {
+		slog.Error("create configuration backup file", "err", err)
+		http.Error(w, "Could not create configuration backup.", http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	if err := s.db.Snapshot(r.Context(), f.Name()); err != nil {
+		slog.Error("snapshot configuration", "err", err)
+		http.Error(w, "Could not create configuration backup.", http.StatusInternalServerError)
+		return
+	}
+	info, err := f.Stat()
+	if err != nil {
+		slog.Error("stat configuration backup", "err", err)
+		http.Error(w, "Could not read configuration backup.", http.StatusInternalServerError)
+		return
+	}
+	filename := "dumpkeeper-config-" + time.Now().UTC().Format("20060102T150405Z") + ".db"
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	if _, err := io.Copy(w, f); err != nil {
+		slog.Warn("send configuration backup", "err", err)
+	}
 }
 
 // availabilityRow is the display shape of one availability-status row.

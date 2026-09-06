@@ -223,6 +223,15 @@ func Open(path string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error { return s.sql.Close() }
 
+// Snapshot writes a consistent, standalone copy of the live database, including
+// committed WAL data. The destination must be absent or empty.
+func (s *Store) Snapshot(ctx context.Context, path string) error {
+	if _, err := s.sql.ExecContext(ctx, `VACUUM main INTO ?`, path); err != nil {
+		return fmt.Errorf("snapshot sqlite: %w", err)
+	}
+	return nil
+}
+
 // migrateV1 reshapes the MVP layout in place: jobs used to embed database
 // credentials and S3 was one global setting. Detected via the legacy
 // jobs.dbname column; a no-op on fresh databases. A database entity is

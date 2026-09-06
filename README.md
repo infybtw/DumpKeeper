@@ -104,6 +104,20 @@ $DATA_DIR/
 
 The SQLite schema is applied on startup automatically; it also migrates the pre-2.0 layout (jobs with embedded credentials and a single global S3 setting) to the current one.
 
+### Configuration backup
+
+In **Settings → Configuration backup**, click **Download configuration backup** to download `dumpkeeper-config-{YYYYMMDDTHHMMSSZ}.db`. DumpKeeper creates a consistent SQLite snapshot with `VACUUM INTO`, including committed WAL changes, without stopping the application. The download requires an authenticated session and a valid CSRF token; temporary snapshot files are removed after the request.
+
+The snapshot includes database profiles, destinations, jobs, settings, execution and availability history, and sessions. **It contains saved PostgreSQL passwords, S3 credentials, and session tokens in plain text: store it securely.** PostgreSQL dump files (local or S3) and environment variables, including `AUTH_LOGIN` and `AUTH_PASSWORD`, are not included.
+
+To restore the Keeper configuration:
+
+1. Stop DumpKeeper.
+2. Move the existing `DATA_DIR/dumpkeeper.db` and any matching `dumpkeeper.db-wal` / `dumpkeeper.db-shm` files to a safe location together. Do not leave old sidecar files beside the restored database.
+3. Copy the downloaded snapshot to `DATA_DIR/dumpkeeper.db`, with ownership and permissions that allow DumpKeeper to read and write it.
+4. Restore local dump files to `DATA_DIR/backups` separately if needed, and provide the required environment variables.
+5. Start DumpKeeper. The restored jobs and schedules become active again; history entries still depend on their referenced local or S3 dump files.
+
 ## Building and running without Docker
 Requires Go 1.25+ and `pg_dump`/`psql`/`createdb` (`postgresql-client`) in `PATH`:
 

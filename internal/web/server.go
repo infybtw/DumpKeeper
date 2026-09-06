@@ -53,6 +53,7 @@ type Server struct {
 //	GET  /restore                          POST /restore
 //	GET  /availability                     GET  /fragment/availability
 //	GET  /settings                         POST /settings
+//	POST /settings/backup
 func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *scheduler.Scheduler, mon *monitor.Monitor) *Server {
 	s := &Server{cfg: cfg, db: store, engine: engine, sched: sched, mon: mon, mux: http.NewServeMux()}
 	mux := s.mux
@@ -98,6 +99,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("GET /fragment/availability", s.requireAuth(s.availabilityFragment))
 	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
 	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
+	mux.HandleFunc("POST /settings/backup", s.requireAuth(s.settingsBackup))
 
 	static, err := fs.Sub(files, "static")
 	if err != nil {

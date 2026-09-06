@@ -12,4 +12,13 @@
     <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>
+<h2>Configuration backup</h2>
+<form class="form" method="post" action="{{u "/settings/backup"}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <p class="hint">Download a consistent SQLite snapshot of DumpKeeper: database profiles, destinations, jobs, settings, history, and sessions. PostgreSQL dump files and environment variables (including the panel login and password) are not included.</p>
+  <p class="hint"><strong>Contains saved database passwords, S3 credentials, and session tokens in plain text. Keep this file private.</strong></p>
+  <div>
+    <button class="btn btn-primary" type="submit">Download configuration backup</button>
+  </div>
+</form>
 {{end}}
