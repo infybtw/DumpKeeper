@@ -50,7 +50,7 @@ Variant 1 — PostgreSQL in the same compose project (default network is shared)
 ```yaml
 services:
   dumpkeeper:
-    build: /path/to/DumpKeeper   # or image: dumpkeeper (see below)
+    image: ghcr.io/infybtw/dumpkeeper  # or  (see below)
     restart: unless-stopped
     environment:
       AUTH_LOGIN: admin
@@ -59,8 +59,6 @@ services:
       - "8080:8080"
     volumes:
       - dumpkeeper-data:/data    # SQLite metadata + local backups
-    # If Postgres is in the same file, depends_on with a healthcheck (as in
-    # this repo's docker-compose.yml) is optional but useful.
 
 volumes:
   dumpkeeper-data:
