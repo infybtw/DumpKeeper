@@ -49,7 +49,7 @@ type Server struct {
 //	GET  /destinations/{id}/edit           POST /destinations/{id}/edit POST /destinations/{id}/delete
 //	GET  /executions                       GET  /executions/{id}/row
 //	POST /executions/{id}/restore          POST /executions/{id}/delete
-//	GET  /executions/{id}/download
+//	GET  /executions/{id}/download        GET  /executions/{id}/metrics
 //	GET  /restore                          POST /restore
 //	GET  /availability                     GET  /fragment/availability
 //	GET  /settings                         POST /settings
@@ -93,6 +93,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /executions/{id}/restore", s.requireAuth(s.executionRestore))
 	mux.HandleFunc("POST /executions/{id}/delete", s.requireAuth(s.executionDelete))
 	mux.HandleFunc("GET /executions/{id}/download", s.requireAuth(s.executionDownload))
+	mux.HandleFunc("GET /executions/{id}/metrics", s.requireAuth(s.executionMetrics))
 	mux.HandleFunc("GET /restore", s.requireAuth(s.restorePage))
 	mux.HandleFunc("POST /restore", s.requireAuth(s.restoreSubmit))
 	mux.HandleFunc("GET /availability", s.requireAuth(s.availabilityPage))

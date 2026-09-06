@@ -48,6 +48,7 @@
     {{if not .StoredOn}}<span class="muted">nowhere</span>{{end}}
   </td>
   <td class="actions">
+    {{if .HasFile}}<a class="btn btn-sm" href="{{u "/executions"}}/{{.ID}}/metrics" hx-get="{{u "/executions"}}/{{.ID}}/metrics" hx-target="#modal-body" hx-swap="innerHTML">Info</a>{{end}}
     {{if .HasFile}}<a class="btn btn-sm" href="{{u "/executions"}}/{{.ID}}/download">Download</a>{{end}}
     {{if and (eq .Status "completed") .CanRestore}}
     <form class="inline" method="post" action="{{u "/executions"}}/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
