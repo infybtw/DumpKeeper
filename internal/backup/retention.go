@@ -9,9 +9,10 @@ import (
 
 // Prune enforces keep-last-N retention on a job's completed backups, newest
 // first: rows beyond job.KeepLast have their stored files deleted (local
-// copy and every S3 destination holding them), then their rows. Individual
-// deletion failures are logged and never abort the loop. KeepLast 0 means
-// unlimited.
+// copy and every S3 destination holding them), then the row is soft-deleted
+// — status flips to 'deleted' so the execution stays in history while
+// holding no file. Individual deletion failures are logged and never abort
+// the loop. KeepLast 0 means unlimited.
 func (e *Engine) Prune(job db.Job) {
 	if job.KeepLast <= 0 {
 		return
@@ -41,8 +42,8 @@ func (e *Engine) Prune(job db.Job) {
 				slog.Warn("retention: delete S3 object", "job", job.Name, "destination", d.Name, "object", b.Filename, "err", err)
 			}
 		}
-		if err := e.DB.DeleteBackup(b.ID); err != nil {
-			slog.Warn("retention: delete row", "job", job.Name, "backup", b.ID, "err", err)
+		if err := e.DB.MarkBackupDeleted(b.ID); err != nil {
+			slog.Warn("retention: mark row deleted", "job", job.Name, "backup", b.ID, "err", err)
 		}
 	}
 }
