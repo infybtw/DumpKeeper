@@ -2,14 +2,14 @@
 <div class="page-head">
   <h1>Availability</h1>
   <span class="muted">
-    {{if .Data.Enabled}}Checking every {{.Data.Interval}} — <a href="/settings">change</a>{{else}}Monitoring disabled — <a href="/settings">enable it</a>{{end}}
+    {{if .Data.Enabled}}Checking every {{.Data.Interval}} — <a href="{{u "/settings"}}">change</a>{{else}}Monitoring disabled — <a href="{{u "/settings"}}">enable it</a>{{end}}
   </span>
 </div>
 <table>
   <thead>
     <tr><th>Database</th><th>Target</th><th>Status</th><th>Last check</th><th>Latency</th></tr>
   </thead>
-  <tbody hx-get="/fragment/availability" hx-trigger="load, every 10s" hx-swap="innerHTML">
+  <tbody hx-get="{{u "/fragment/availability"}}" hx-trigger="load, every 10s" hx-swap="innerHTML">
     {{template "availability-rows" .Data}}
   </tbody>
 </table>

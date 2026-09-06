@@ -12,6 +12,6 @@
   <td>{{if .Latency}}{{.Latency}}{{else}}<span class="muted">—</span>{{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="5" class="muted">No databases yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to monitor it.</td></tr>
+<tr><td colspan="5" class="muted">No databases yet — <a href="{{u "/databases/new"}}" hx-get="{{u "/databases/new"}}" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to monitor it.</td></tr>
 {{end}}
 {{end}}

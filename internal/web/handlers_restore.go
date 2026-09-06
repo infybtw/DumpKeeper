@@ -28,12 +28,12 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) restoreSubmit(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PostFormValue("database_id"))
 	if err != nil {
-		redirectTo(w, r, "/restore", "", "select a database profile")
+		s.redirectTo(w, r, "/restore", "", "select a database profile")
 		return
 	}
 	dbe, err := s.db.GetDatabase(id)
 	if err != nil {
-		redirectTo(w, r, "/restore", "", "select a database profile")
+		s.redirectTo(w, r, "/restore", "", "select a database profile")
 		return
 	}
 	backupFirst := r.PostFormValue("backup_first") == "1"
@@ -42,27 +42,27 @@ func (s *Server) restoreSubmit(w http.ResponseWriter, r *http.Request) {
 	keepACLs := r.PostFormValue("keep_acls") == "1"
 	fhs := r.MultipartForm.File["file"]
 	if len(fhs) != 1 {
-		redirectTo(w, r, "/restore", "", "attach exactly one .sql file")
+		s.redirectTo(w, r, "/restore", "", "attach exactly one .sql file")
 		return
 	}
 	if fhs[0].Size == 0 {
-		redirectTo(w, r, "/restore", "", "uploaded file is empty")
+		s.redirectTo(w, r, "/restore", "", "uploaded file is empty")
 		return
 	}
 	src, err := fhs[0].Open()
 	if err != nil {
-		redirectTo(w, r, "/restore", "", "open upload: "+err.Error())
+		s.redirectTo(w, r, "/restore", "", "open upload: "+err.Error())
 		return
 	}
 	defer src.Close()
 	_, filename, err := s.engine.StartImport(dbe, src, backup.ImportOptions{BackupFirst: backupFirst, CreateDB: createDB, KeepACLs: keepACLs, ClearDB: clearDB})
 	if err != nil {
-		redirectTo(w, r, "/restore", "", err.Error())
+		s.redirectTo(w, r, "/restore", "", err.Error())
 		return
 	}
 	msg := "Import started: " + filename + " into " + dbe.DBName
 	if backupFirst {
 		msg += ", safety dump first"
 	}
-	redirectTo(w, r, "/executions", msg+".", "")
+	s.redirectTo(w, r, "/executions", msg+".", "")
 }

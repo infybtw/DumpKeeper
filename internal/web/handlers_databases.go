@@ -94,10 +94,10 @@ func (s *Server) databaseCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isHtmx(r) {
-		htmxRedirect(w, "/databases", "Database "+created.Name+" created.", "")
+		s.htmxRedirect(w, "/databases", "Database "+created.Name+" created.", "")
 		return
 	}
-	redirectTo(w, r, "/databases", "Database "+created.Name+" created.", "")
+	s.redirectTo(w, r, "/databases", "Database "+created.Name+" created.", "")
 }
 
 func (s *Server) databaseEditForm(w http.ResponseWriter, r *http.Request) {
@@ -149,10 +149,10 @@ func (s *Server) databaseUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isHtmx(r) {
-		htmxRedirect(w, "/databases", "Database "+dbe.Name+" updated.", "")
+		s.htmxRedirect(w, "/databases", "Database "+dbe.Name+" updated.", "")
 		return
 	}
-	redirectTo(w, r, "/databases", "Database "+dbe.Name+" updated.", "")
+	s.redirectTo(w, r, "/databases", "Database "+dbe.Name+" updated.", "")
 }
 
 // databasePing verifies the configured connection on demand, using the same
@@ -169,10 +169,10 @@ func (s *Server) databasePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, detail, err := monitor.Ping(r.Context(), dbe); err != nil {
-		redirectTo(w, r, "/databases", "", "Could not reach database "+dbe.Name+": "+detail)
+		s.redirectTo(w, r, "/databases", "", "Could not reach database "+dbe.Name+": "+detail)
 		return
 	}
-	redirectTo(w, r, "/databases", "Database "+dbe.Name+" is reachable.", "")
+	s.redirectTo(w, r, "/databases", "Database "+dbe.Name+" is reachable.", "")
 }
 
 func (s *Server) databaseDelete(w http.ResponseWriter, r *http.Request) {
@@ -187,15 +187,15 @@ func (s *Server) databaseDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n, err := s.db.DatabaseJobCount(dbe.ID); err == nil && n > 0 {
-		redirectTo(w, r, "/databases", "",
+		s.redirectTo(w, r, "/databases", "",
 			"Database "+dbe.Name+" is used by "+strconv.Itoa(n)+" job(s); remove those jobs first.")
 		return
 	}
 	if err := s.db.DeleteDatabase(dbe.ID); err != nil {
-		redirectTo(w, r, "/databases", "", "Could not delete database: "+err.Error())
+		s.redirectTo(w, r, "/databases", "", "Could not delete database: "+err.Error())
 		return
 	}
-	redirectTo(w, r, "/databases", "Database "+dbe.Name+" deleted.", "")
+	s.redirectTo(w, r, "/databases", "Database "+dbe.Name+" deleted.", "")
 }
 
 // parseDatabaseForm reads and validates the database form; f.Error != ""

@@ -175,10 +175,10 @@ func (s *Server) jobCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(created)
 	if isHtmx(r) {
-		htmxRedirect(w, "/", "Job "+created.Name+" created.", "")
+		s.htmxRedirect(w, "/", "Job "+created.Name+" created.", "")
 		return
 	}
-	redirectTo(w, r, "/", "Job "+created.Name+" created.", "")
+	s.redirectTo(w, r, "/", "Job "+created.Name+" created.", "")
 }
 
 func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
@@ -233,10 +233,10 @@ func (s *Server) jobUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(job)
 	if isHtmx(r) {
-		htmxRedirect(w, "/", "Job "+job.Name+" updated.", "")
+		s.htmxRedirect(w, "/", "Job "+job.Name+" updated.", "")
 		return
 	}
-	redirectTo(w, r, "/", "Job "+job.Name+" updated.", "")
+	s.redirectTo(w, r, "/", "Job "+job.Name+" updated.", "")
 }
 
 func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
@@ -260,10 +260,10 @@ func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
 		s.deleteBackupFiles(r, b)
 	}
 	if err := s.db.DeleteJob(job.ID); err != nil {
-		redirectTo(w, r, "/", "", "Could not delete job: "+err.Error())
+		s.redirectTo(w, r, "/", "", "Could not delete job: "+err.Error())
 		return
 	}
-	redirectTo(w, r, "/", "Job "+job.Name+" deleted.", "")
+	s.redirectTo(w, r, "/", "Job "+job.Name+" deleted.", "")
 }
 
 func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
@@ -278,13 +278,13 @@ func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.engine.Trigger(id, backup.TriggerManual); err != nil {
 		if errors.Is(err, backup.ErrAlreadyRunning) {
-			redirectTo(w, r, "/", "", "A backup is already running for this job.")
+			s.redirectTo(w, r, "/", "", "A backup is already running for this job.")
 			return
 		}
-		redirectTo(w, r, "/", "", err.Error())
+		s.redirectTo(w, r, "/", "", err.Error())
 		return
 	}
-	redirectTo(w, r, "/", "Backup started.", "")
+	s.redirectTo(w, r, "/", "Backup started.", "")
 }
 
 // parseJobForm reads and validates the job form. It always returns the form

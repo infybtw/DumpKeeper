@@ -25,18 +25,18 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	minutes, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("interval_minutes")), 10, 64)
 	if err != nil || minutes < 0 || minutes > 7*24*60 {
-		redirectTo(w, r, "/settings", "", "Interval must be a whole number of minutes between 0 and 10080.")
+		s.redirectTo(w, r, "/settings", "", "Interval must be a whole number of minutes between 0 and 10080.")
 		return
 	}
 	if err := s.mon.SetInterval(time.Duration(minutes) * time.Minute); err != nil {
-		redirectTo(w, r, "/settings", "", "Could not save settings: "+err.Error())
+		s.redirectTo(w, r, "/settings", "", "Could not save settings: "+err.Error())
 		return
 	}
 	if minutes == 0 {
-		redirectTo(w, r, "/settings", "Availability monitoring disabled.", "")
+		s.redirectTo(w, r, "/settings", "Availability monitoring disabled.", "")
 		return
 	}
-	redirectTo(w, r, "/settings",
+	s.redirectTo(w, r, "/settings",
 		"Monitoring every "+strconv.FormatInt(minutes, 10)+" minute(s); first check runs now.", "")
 }
 

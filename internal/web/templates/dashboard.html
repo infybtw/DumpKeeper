@@ -2,7 +2,7 @@
 <div class="page-head">
   <h1>Summary</h1>
 </div>
-<div hx-get="/fragment/dashboard" hx-trigger="load, every 10s" hx-swap="innerHTML">
+<div hx-get="{{u "/fragment/dashboard"}}" hx-trigger="load, every 10s" hx-swap="innerHTML">
   {{template "dashboard-content" .Data}}
 </div>
 {{end}}

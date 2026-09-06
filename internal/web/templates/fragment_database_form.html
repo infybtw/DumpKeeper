@@ -39,7 +39,7 @@
 {{define "database-modal"}}
 <h2 class="modal-title">{{if .Data.IsNew}}New database{{else}}Edit database{{end}}</h2>
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
-<form class="form" method="post" action="{{.Data.Action}}" hx-post="{{.Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
+<form class="form" method="post" action="{{u .Data.Action}}" hx-post="{{u .Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   {{template "database-fields" .}}
   <div class="modal-actions">

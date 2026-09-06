@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Executions</h1>
-  <form class="filter" method="get" action="/executions">
+  <form class="filter" method="get" action="{{u "/executions"}}">
     <select name="job">
       <option value="">All jobs</option>
       {{$sel := .Data.Selected}}
@@ -25,8 +25,8 @@
 {{end}}
 
 {{define "execution_row"}}
-<tr{{if .Live}} hx-get="/executions/{{.ID}}/row" hx-trigger="every 1s" hx-swap="outerHTML"{{end}}>
-  <td>{{if .JobName}}<a href="/executions?job={{.JobID}}">{{.JobName}}</a>{{else}}<span class="muted">imported</span>{{end}}</td>
+<tr{{if .Live}} hx-get="{{u "/executions"}}/{{.ID}}/row" hx-trigger="every 1s" hx-swap="outerHTML"{{end}}>
+  <td>{{if .JobName}}<a href="{{u "/executions"}}?job={{.JobID}}">{{.JobName}}</a>{{else}}<span class="muted">imported</span>{{end}}</td>
   <td>{{if .Database}}{{.Database}}{{else}}<span class="muted">—</span>{{end}}</td>
   <td>{{.StartedAt}}</td>
   <td>{{.Trigger}}</td>
@@ -48,14 +48,14 @@
     {{if not .StoredOn}}<span class="muted">nowhere</span>{{end}}
   </td>
   <td class="actions">
-    {{if .HasFile}}<a class="btn btn-sm" href="/executions/{{.ID}}/download">Download</a>{{end}}
+    {{if .HasFile}}<a class="btn btn-sm" href="{{u "/executions"}}/{{.ID}}/download">Download</a>{{end}}
     {{if and (eq .Status "completed") .CanRestore}}
-    <form class="inline" method="post" action="/executions/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
+    <form class="inline" method="post" action="{{u "/executions"}}/{{.ID}}/restore" onsubmit="return confirm('Restore the database of {{.JobName}} from this execution?')">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button class="btn btn-sm" type="submit">Restore</button>
     </form>
     {{end}}
-    <form class="inline" method="post" action="/executions/{{.ID}}/delete" onsubmit="return confirm('Delete this execution and its stored files?')">
+    <form class="inline" method="post" action="{{u "/executions"}}/{{.ID}}/delete" onsubmit="return confirm('Delete this execution and its stored files?')">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
     </form>

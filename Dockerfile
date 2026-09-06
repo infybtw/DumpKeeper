@@ -11,5 +11,5 @@ COPY --from=build /out/dumpkeeper /usr/local/bin/dumpkeeper
 ENV DATA_DIR=/data LISTEN_ADDR=:8080
 VOLUME /data
 EXPOSE 8080
-HEALTHCHECK CMD wget -qO- http://127.0.0.1:8080/login >/dev/null || exit 1
+HEALTHCHECK CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
 ENTRYPOINT ["dumpkeeper"]

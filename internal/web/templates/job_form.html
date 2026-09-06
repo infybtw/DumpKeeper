@@ -3,12 +3,12 @@
   <h1>{{if .Data.IsNew}}New backup job{{else}}Edit backup job{{end}}</h1>
 </div>
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
-<form class="form" method="post" action="{{.Data.Action}}">
+<form class="form" method="post" action="{{u .Data.Action}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   {{template "job-fields" .}}
   <div>
     <button class="btn btn-primary" type="submit">Save job</button>
-    <a class="btn" href="/">Cancel</a>
+    <a class="btn" href="{{u "/"}}">Cancel</a>
   </div>
 </form>
 {{end}}

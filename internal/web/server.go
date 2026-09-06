@@ -108,8 +108,41 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	return s
 }
 
-// Handler returns the root handler.
-func (s *Server) Handler() http.Handler { return s.mux }
+// Handler returns the root handler. Without a base path it is the bare mux.
+// With one configured (BASE_PATH=/dumpkeeper), unprefixed paths 404 — the
+// root redirects to the panel — and the prefix is stripped before the mux,
+// so route registration stays root-relative.
+func (s *Server) Handler() http.Handler {
+	base := s.cfg.BasePath
+	if base == "" {
+		return s.mux
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == base {
+			http.Redirect(w, r, base+"/", http.StatusFound)
+			return
+		}
+		if !strings.HasPrefix(r.URL.Path, base+"/") {
+			http.NotFound(w, r)
+			return
+		}
+		http.StripPrefix(base, s.mux).ServeHTTP(w, r)
+	})
+}
+
+// u joins an internal route path with the configured base path; templates
+// reach it as {{u "..."}} so authored URLs stay root-relative.
+func (s *Server) u(path string) string { return s.cfg.BasePath + path }
+
+// funcs extends the shared template funcs with the base-path-aware u.
+func (s *Server) funcs() template.FuncMap {
+	fm := make(template.FuncMap, len(funcMap)+1)
+	for k, v := range funcMap {
+		fm[k] = v
+	}
+	fm["u"] = s.u
+	return fm
+}
 
 // pageData is the template context for full pages.
 type pageData struct {
@@ -142,7 +175,7 @@ var funcMap = template.FuncMap{
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
-	t, err := template.New("base.html").Funcs(funcMap).ParseFS(files,
+	t, err := template.New("base.html").Funcs(s.funcs()).ParseFS(files,
 		"templates/base.html", "templates/fragment_jobs.html",
 		"templates/fragment_availability.html", "templates/fragment_dashboard.html",
 		"templates/fragment_database_form.html", "templates/fragment_destination_form.html",
@@ -178,7 +211,7 @@ func isHtmx(r *http.Request) bool {
 // renderModal writes a form modal fragment (create or edit) for an htmx swap.
 // The fragment context reuses pageData: CSRF at the root, the form as Data.
 func (s *Server) renderModal(w http.ResponseWriter, status int, tmpl, execName, csrf string, data any) {
-	t, err := template.New(tmpl).Funcs(funcMap).ParseFS(files, "templates/"+tmpl)
+	t, err := template.New(tmpl).Funcs(s.funcs()).ParseFS(files, "templates/"+tmpl)
 	if err != nil {
 		slog.Error("web: parse modal", "template", tmpl, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -193,8 +226,8 @@ func (s *Server) renderModal(w http.ResponseWriter, status int, tmpl, execName, 
 
 // htmxRedirect asks htmx to navigate the browser to the flash URL after a
 // successful modal submit.
-func htmxRedirect(w http.ResponseWriter, path, msg, errMsg string) {
-	w.Header().Set("HX-Redirect", flashURL(path, msg, errMsg))
+func (s *Server) htmxRedirect(w http.ResponseWriter, path, msg, errMsg string) {
+	w.Header().Set("HX-Redirect", flashURL(s.u(path), msg, errMsg))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -214,13 +247,13 @@ func flashURL(path, msg, errMsg string) string {
 }
 
 // redirectTo redirects with a stateless flash message via query params.
-func redirectTo(w http.ResponseWriter, r *http.Request, path, msg, errMsg string) {
-	http.Redirect(w, r, flashURL(path, msg, errMsg), http.StatusSeeOther)
+func (s *Server) redirectTo(w http.ResponseWriter, r *http.Request, path, msg, errMsg string) {
+	http.Redirect(w, r, flashURL(s.u(path), msg, errMsg), http.StatusSeeOther)
 }
 
 // renderFragment writes only the named fragment template (htmx poll target).
 func (s *Server) renderFragment(w http.ResponseWriter, tmpl, execName string, data any) {
-	t, err := template.New(tmpl).Funcs(funcMap).ParseFS(files, "templates/"+tmpl)
+	t, err := template.New(tmpl).Funcs(s.funcs()).ParseFS(files, "templates/"+tmpl)
 	if err != nil {
 		slog.Error("web: parse fragment", "template", tmpl, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

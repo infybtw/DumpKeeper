@@ -3,10 +3,10 @@
   <h1>Restore</h1>
 </div>
 {{if not .Data.Databases}}
-<p class="muted">No database profiles yet. <a href="/databases">Create a database profile</a> first — a restore needs a target.</p>
+<p class="muted">No database profiles yet. <a href="{{u "/databases"}}">Create a database profile</a> first — a restore needs a target.</p>
 {{else}}
-<p class="hint">Restoring replays the uploaded dump with <code>psql</code>: <strong>all objects in the target database are dropped and replaced</strong> (backups contain <code>DROP&nbsp;...&nbsp;IF EXISTS</code> statements). The uploaded dump is kept as a local backup and appears in <a href="/executions">Executions</a>.</p>
-<form class="form" method="post" action="/restore" enctype="multipart/form-data" onsubmit="return confirm('Drop and replace all objects in the selected database?')">
+<p class="hint">Restoring replays the uploaded dump with <code>psql</code>: <strong>all objects in the target database are dropped and replaced</strong> (backups contain <code>DROP&nbsp;...&nbsp;IF EXISTS</code> statements). The uploaded dump is kept as a local backup and appears in <a href="{{u "/executions"}}">Executions</a>.</p>
+<form class="form" method="post" action="{{u "/restore"}}" enctype="multipart/form-data" onsubmit="return confirm('Drop and replace all objects in the selected database?')">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <label>Database profile
     <select name="database_id" required>

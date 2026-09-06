@@ -25,7 +25,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := s.currentSession(r)
 		if !ok {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, s.u("/login"), http.StatusSeeOther)
 			return
 		}
 		if r.Method == http.MethodPost &&
@@ -59,7 +59,7 @@ func (s *Server) currentSession(r *http.Request) (db.Session, bool) {
 
 func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.currentSession(r); ok {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, s.u("/"), http.StatusSeeOther)
 		return
 	}
 	s.renderLogin(w, http.StatusOK, "")
@@ -98,12 +98,12 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
-		Path:     "/",
+		Path:     s.u("/"),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, s.u("/"), http.StatusSeeOther)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -113,12 +113,12 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
-		Path:     "/",
+		Path:     s.u("/"),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, s.u("/login"), http.StatusSeeOther)
 }
 
 // randomHex returns 32 random bytes hex-encoded (session token and CSRF token).

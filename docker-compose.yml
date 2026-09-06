@@ -67,6 +67,7 @@ services:
     environment:
       AUTH_LOGIN: admin
       AUTH_PASSWORD: admin123
+      BASE_PATH: /dk
     ports:
       - "127.0.0.1:18080:8080" # host 8080 is taken by another project
     volumes:

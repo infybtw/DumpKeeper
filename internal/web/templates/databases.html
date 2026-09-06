@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Databases</h1>
-  <a class="btn btn-primary" href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">New database</a>
+  <a class="btn btn-primary" href="{{u "/databases/new"}}" hx-get="{{u "/databases/new"}}" hx-target="#modal-body" hx-swap="innerHTML">New database</a>
 </div>
 <table>
   <thead>
@@ -16,19 +16,19 @@
       <td>{{.SSLMode}}</td>
       <td>{{.JobCount}}</td>
       <td class="actions">
-        <a class="btn btn-sm" href="/databases/{{.ID}}/edit" hx-get="/databases/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
-        <form class="inline" method="post" action="/databases/{{.ID}}/ping">
+        <a class="btn btn-sm" href="{{u "/databases"}}/{{.ID}}/edit" hx-get="{{u "/databases"}}/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
+        <form class="inline" method="post" action="{{u "/databases"}}/{{.ID}}/ping">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Ping</button>
         </form>
-        <form class="inline" method="post" action="/databases/{{.ID}}/delete" onsubmit="return confirm('Delete database {{.Name}}?')">
+        <form class="inline" method="post" action="{{u "/databases"}}/{{.ID}}/delete" onsubmit="return confirm('Delete database {{.Name}}?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm btn-danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="6" class="muted">No databases yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to use it in jobs.</td></tr>
+    <tr><td colspan="6" class="muted">No databases yet — <a href="{{u "/databases/new"}}" hx-get="{{u "/databases/new"}}" hx-target="#modal-body" hx-swap="innerHTML">add one</a> to use it in jobs.</td></tr>
     {{end}}
   </tbody>
 </table>

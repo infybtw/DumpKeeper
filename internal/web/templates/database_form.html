@@ -3,12 +3,12 @@
   <h1>{{if .Data.IsNew}}New database{{else}}Edit database{{end}}</h1>
 </div>
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
-<form class="form" method="post" action="{{.Data.Action}}">
+<form class="form" method="post" action="{{u .Data.Action}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   {{template "database-fields" .}}
   <div>
     <button class="btn btn-primary" type="submit">Save database</button>
-    <a class="btn" href="/databases">Cancel</a>
+    <a class="btn" href="{{u "/databases"}}">Cancel</a>
   </div>
 </form>
 {{end}}

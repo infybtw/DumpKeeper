@@ -16,18 +16,18 @@
     {{else}}<span class="muted">never</span>{{end}}
   </td>
   <td class="actions">
-    <form class="inline" method="post" action="/jobs/{{.ID}}/backup">
+    <form class="inline" method="post" action="{{u "/jobs"}}/{{.ID}}/backup">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button class="btn btn-sm" type="submit">Back up now</button>
     </form>
-    <a class="btn btn-sm" href="/jobs/{{.ID}}/edit" hx-get="/jobs/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
-    <form class="inline" method="post" action="/jobs/{{.ID}}/delete" onsubmit="return confirm('Delete job {{.Name}} and all its executions?')">
+    <a class="btn btn-sm" href="{{u "/jobs"}}/{{.ID}}/edit" hx-get="{{u "/jobs"}}/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
+    <form class="inline" method="post" action="{{u "/jobs"}}/{{.ID}}/delete" onsubmit="return confirm('Delete job {{.Name}} and all its executions?')">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
     </form>
   </td>
 </tr>
 {{else}}
-<tr><td colspan="7" class="muted">No jobs yet — <a href="/databases/new" hx-get="/databases/new" hx-target="#modal-body" hx-swap="innerHTML">add a database</a>, then <a href="/jobs/new" hx-get="/jobs/new" hx-target="#modal-body" hx-swap="innerHTML">create a job</a>.</td></tr>
+<tr><td colspan="7" class="muted">No jobs yet — <a href="{{u "/databases/new"}}" hx-get="{{u "/databases/new"}}" hx-target="#modal-body" hx-swap="innerHTML">add a database</a>, then <a href="{{u "/jobs/new"}}" hx-get="{{u "/jobs/new"}}" hx-target="#modal-body" hx-swap="innerHTML">create a job</a>.</td></tr>
 {{end}}
 {{end}}

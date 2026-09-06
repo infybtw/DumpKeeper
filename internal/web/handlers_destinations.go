@@ -85,10 +85,10 @@ func (s *Server) destinationCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isHtmx(r) {
-		htmxRedirect(w, "/destinations", "Destination "+created.Name+" created.", "")
+		s.htmxRedirect(w, "/destinations", "Destination "+created.Name+" created.", "")
 		return
 	}
-	redirectTo(w, r, "/destinations", "Destination "+created.Name+" created.", "")
+	s.redirectTo(w, r, "/destinations", "Destination "+created.Name+" created.", "")
 }
 
 func (s *Server) destinationEditForm(w http.ResponseWriter, r *http.Request) {
@@ -140,10 +140,10 @@ func (s *Server) destinationUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isHtmx(r) {
-		htmxRedirect(w, "/destinations", "Destination "+d.Name+" updated.", "")
+		s.htmxRedirect(w, "/destinations", "Destination "+d.Name+" updated.", "")
 		return
 	}
-	redirectTo(w, r, "/destinations", "Destination "+d.Name+" updated.", "")
+	s.redirectTo(w, r, "/destinations", "Destination "+d.Name+" updated.", "")
 }
 
 // destinationTest confirms that the saved credentials can access the bucket
@@ -164,13 +164,13 @@ func (s *Server) destinationTest(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	if err := backup.S3Store(d).Check(ctx); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			redirectTo(w, r, "/destinations", "", "Destination test timed out after 10 seconds.")
+			s.redirectTo(w, r, "/destinations", "", "Destination test timed out after 10 seconds.")
 			return
 		}
-		redirectTo(w, r, "/destinations", "", "Could not access bucket for destination "+d.Name+": "+err.Error())
+		s.redirectTo(w, r, "/destinations", "", "Could not access bucket for destination "+d.Name+": "+err.Error())
 		return
 	}
-	redirectTo(w, r, "/destinations", "Destination "+d.Name+" can access bucket "+d.Bucket+".", "")
+	s.redirectTo(w, r, "/destinations", "Destination "+d.Name+" can access bucket "+d.Bucket+".", "")
 }
 
 func (s *Server) destinationDelete(w http.ResponseWriter, r *http.Request) {
@@ -196,10 +196,10 @@ func (s *Server) destinationDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := s.db.DeleteDestination(d.ID); err != nil {
-		redirectTo(w, r, "/destinations", "", "Could not delete destination: "+err.Error())
+		s.redirectTo(w, r, "/destinations", "", "Could not delete destination: "+err.Error())
 		return
 	}
-	redirectTo(w, r, "/destinations", "Destination "+d.Name+" deleted.", "")
+	s.redirectTo(w, r, "/destinations", "Destination "+d.Name+" deleted.", "")
 }
 
 // parseDestinationForm reads and validates the destination form;

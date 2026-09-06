@@ -2,11 +2,11 @@
 <div class="page-head">
   <h1>Settings</h1>
 </div>
-<form class="form" method="post" action="/settings">
+<form class="form" method="post" action="{{u "/settings"}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <label>Ping interval, minutes
     <input type="number" name="interval_minutes" min="0" max="10080" step="1" value="{{.Data.IntervalMinutes}}">
-    <span class="hint">How often every database is probed with <code>psql SELECT 1</code>; failures are recorded as downtime periods on the <a href="/availability">Availability</a> page. 0 disables monitoring.</span>
+    <span class="hint">How often every database is probed with <code>psql SELECT 1</code>; failures are recorded as downtime periods on the <a href="{{u "/availability"}}">Availability</a> page. 0 disables monitoring.</span>
   </label>
   <div>
     <button class="btn btn-primary" type="submit">Save</button>

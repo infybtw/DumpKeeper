@@ -111,14 +111,14 @@ func (s *Server) executionRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.Status != db.StatusCompleted {
-		redirectTo(w, r, "/executions", "", "only completed executions can be restored")
+		s.redirectTo(w, r, "/executions", "", "only completed executions can be restored")
 		return
 	}
 	if err := s.engine.RestoreAsync(b); err != nil {
-		redirectTo(w, r, "/executions", "", err.Error())
+		s.redirectTo(w, r, "/executions", "", err.Error())
 		return
 	}
-	redirectTo(w, r, "/executions", "Restore started: "+b.Filename+".", "")
+	s.redirectTo(w, r, "/executions", "Restore started: "+b.Filename+".", "")
 }
 
 // executionRowPoll re-renders one executions table row for htmx polling.
@@ -168,10 +168,10 @@ func (s *Server) executionDelete(w http.ResponseWriter, r *http.Request) {
 	s.engine.ClearProgress(b.ID)
 	s.deleteBackupFiles(r, b)
 	if err := s.db.DeleteBackup(b.ID); err != nil {
-		redirectTo(w, r, "/executions", "", err.Error())
+		s.redirectTo(w, r, "/executions", "", err.Error())
 		return
 	}
-	redirectTo(w, r, "/executions", "Execution deleted (files removed).", "")
+	s.redirectTo(w, r, "/executions", "Execution deleted (files removed).", "")
 }
 
 func (s *Server) executionDownload(w http.ResponseWriter, r *http.Request) {

@@ -111,6 +111,23 @@ services:
 
 For a MinIO/S3 destination in the UI, use an endpoint reachable from the container (`minio:9000`, not `127.0.0.1:9000`) and turn HTTPS off if needed.
 
+### Panel under a URL prefix (`BASE_PATH`)
+
+To serve the panel under `http://host:8080/dumpkeeper/` instead of the root (typical behind a reverse proxy that routes by path), set `BASE_PATH` on the service — links, static assets, cookies and redirects follow it automatically:
+
+```yaml
+services:
+  dumpkeeper:
+    environment:
+      AUTH_LOGIN: admin
+      AUTH_PASSWORD: change-me
+      BASE_PATH: /dumpkeeper   # panel at http://host:8080/dumpkeeper/
+    ports:
+      - "8080:8080"
+```
+
+With `BASE_PATH` set, the bare root `/` redirects to the panel and unprefixed paths return 404. Omit the variable to keep the panel at the root.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
@@ -119,6 +136,7 @@ For a MinIO/S3 destination in the UI, use an endpoint reachable from the contain
 | `AUTH_PASSWORD` | yes | — | Their password |
 | `LISTEN_ADDR` | no | `:8080` | HTTP server address |
 | `DATA_DIR` | no | `/data` | Directory for metadata and local backups |
+| `BASE_PATH` | no | — | URL prefix for the whole UI, e.g. `/dumpkeeper` — pages, assets, links, cookies and redirects follow it |
 
 ## Data layout
 
@@ -142,4 +160,5 @@ AUTH_LOGIN=admin AUTH_PASSWORD=admin123 DATA_DIR=./data LISTEN_ADDR=:8080 ./dump
 
 - The `pg_dump` client version in the image must be **no older than** the server's major version. The image (alpine 3.22) ships the PostgreSQL 17 client — for 18+ servers, rebuild the image on a newer alpine.
 - PostgreSQL passwords are passed via `PGPASSWORD`/`PGSSLMODE`, not argv; S3 credentials are stored in SQLite in plain text — restrict access to `DATA_DIR`.
-- Port 8080 serves only the UI and the healthcheck (`/login`); expose it publicly behind a reverse proxy with TLS.
+- Port 8080 serves only the UI and the healthcheck (`/`); expose it publicly behind a reverse proxy with TLS.
+- Path prefix: set `BASE_PATH=/dumpkeeper` to serve the panel under `http://host:8080/dumpkeeper/` (handy behind a reverse proxy routing by path). With a prefix set, the bare root `/` redirects to it and unprefixed paths 404; the healthcheck hits `/`, which works with and without a prefix.

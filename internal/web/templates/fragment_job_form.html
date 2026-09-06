@@ -10,7 +10,7 @@
       <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}} ({{.Host}}:{{.Port}}/{{.DBName}})</option>
       {{end}}
     </select>
-    <span class="hint">Manage connection profiles on the <a href="/databases">Databases</a> page.</span>
+    <span class="hint">Manage connection profiles on the <a href="{{u "/databases"}}">Databases</a> page.</span>
   </label>
   <label>Schedule
     <input name="schedule" value="{{.Data.Schedule}}" placeholder="0 2 * * *">
@@ -33,7 +33,7 @@
 {{define "job-modal"}}
 <h2 class="modal-title">{{if .Data.IsNew}}New backup job{{else}}Edit backup job{{end}}</h2>
 {{with .Data.Error}}<div class="flash flash-err">{{.}}</div>{{end}}
-<form class="form" method="post" action="{{.Data.Action}}" hx-post="{{.Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
+<form class="form" method="post" action="{{u .Data.Action}}" hx-post="{{u .Data.Action}}" hx-target="#modal-body" hx-swap="innerHTML">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   {{template "job-fields" .}}
   <div class="modal-actions">

@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Destinations</h1>
-  <a class="btn btn-primary" href="/destinations/new" hx-get="/destinations/new" hx-target="#modal-body" hx-swap="innerHTML">New destination</a>
+  <a class="btn btn-primary" href="{{u "/destinations/new"}}" hx-get="{{u "/destinations/new"}}" hx-target="#modal-body" hx-swap="innerHTML">New destination</a>
 </div>
 <table>
   <thead>
@@ -16,19 +16,19 @@
       <td>{{if .Prefix}}<code>{{.Prefix}}/</code>{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{if .UseSSL}}yes{{else}}no{{end}}</td>
       <td class="actions">
-        <a class="btn btn-sm" href="/destinations/{{.ID}}/edit" hx-get="/destinations/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
-        <form class="inline" method="post" action="/destinations/{{.ID}}/test">
+        <a class="btn btn-sm" href="{{u "/destinations"}}/{{.ID}}/edit" hx-get="{{u "/destinations"}}/{{.ID}}/edit" hx-target="#modal-body" hx-swap="innerHTML">Edit</a>
+        <form class="inline" method="post" action="{{u "/destinations"}}/{{.ID}}/test">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Test connection</button>
         </form>
-        <form class="inline" method="post" action="/destinations/{{.ID}}/delete" onsubmit="return confirm('Delete destination {{.Name}} and the objects stored through it?')">
+        <form class="inline" method="post" action="{{u "/destinations"}}/{{.ID}}/delete" onsubmit="return confirm('Delete destination {{.Name}} and the objects stored through it?')">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn btn-sm btn-danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="6" class="muted">No destinations yet — jobs can still store locally, or <a href="/destinations/new" hx-get="/destinations/new" hx-target="#modal-body" hx-swap="innerHTML">add an S3 bucket</a>.</td></tr>
+    <tr><td colspan="6" class="muted">No destinations yet — jobs can still store locally, or <a href="{{u "/destinations/new"}}" hx-get="{{u "/destinations/new"}}" hx-target="#modal-body" hx-swap="innerHTML">add an S3 bucket</a>.</td></tr>
     {{end}}
   </tbody>
 </table>
