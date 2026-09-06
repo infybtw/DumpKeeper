@@ -1,14 +1,17 @@
 package web
 
 import (
-	"dumpkeeper/internal/backup"
-	"dumpkeeper/internal/db"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
+
+	"dumpkeeper/internal/backup"
+	"dumpkeeper/internal/db"
 )
 
 // executionRow is the display shape of one executions-table row.
@@ -174,6 +177,10 @@ func (s *Server) executionDelete(w http.ResponseWriter, r *http.Request) {
 	s.redirectTo(w, r, "/executions", "Execution deleted (files removed).", "")
 }
 
+// errNoBackupFile reports that a backup row has no readable file source:
+// no local copy and no linked destination.
+var errNoBackupFile = errors.New("backup file is not available")
+
 func (s *Server) executionDownload(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -185,22 +192,12 @@ func (s *Server) executionDownload(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var rc io.ReadCloser
-	var size int64
-	if b.StoredLocal {
-		rc, size, err = s.engine.Local.Open(r.Context(), b.Filename)
-	} else {
-		var dests []db.Destination
-		dests, err = s.db.BackupDestinations(b.ID)
-		if err == nil {
-			if len(dests) == 0 {
-				http.Error(w, "backup file is not available", http.StatusNotFound)
-				return
-			}
-			rc, size, err = backup.S3Store(dests[0]).Open(r.Context(), b.Filename)
-		}
-	}
+	rc, size, err := s.openBackupFile(r.Context(), b)
 	if err != nil {
+		if errors.Is(err, errNoBackupFile) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -209,6 +206,65 @@ func (s *Server) executionDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", b.Filename))
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	io.Copy(w, rc)
+}
+
+// openBackupFile resolves a readable stream for b's dump file: the local
+// copy when present, otherwise the first destination returned by
+// BackupDestinations. The caller closes the stream.
+func (s *Server) openBackupFile(ctx context.Context, b db.Backup) (io.ReadCloser, int64, error) {
+	if b.StoredLocal {
+		return s.engine.Local.Open(ctx, b.Filename)
+	}
+	dests, err := s.db.BackupDestinations(b.ID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(dests) == 0 {
+		return nil, 0, errNoBackupFile
+	}
+	return backup.S3Store(dests[0]).Open(ctx, b.Filename)
+}
+
+// executionMetrics renders the shared-dialog fragment with per-table COPY
+// data-line counts for a saved dump. Counts are derived on demand from the
+// immutable file, so local, S3-only, imported, and historical executions
+// measure alike with nothing persisted. A missing or malformed artifact
+// logs its detail and degrades to the modal's generic unavailable state —
+// storage errors must not leak into the page.
+func (s *Server) executionMetrics(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := s.db.GetBackup(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	data := executionMetricsData{}
+	rc, _, err := s.openBackupFile(r.Context(), b)
+	if err != nil {
+		slog.Warn("open backup for metrics", "backup", b.ID, "file", b.Filename, "err", err)
+		data.Unavailable = true
+	} else {
+		defer rc.Close()
+		m, merr := backup.MeasureDump(rc)
+		if merr != nil {
+			slog.Warn("measure backup", "backup", b.ID, "file", b.Filename, "err", merr)
+			data.Unavailable = true
+		} else {
+			data.DumpMetrics = m
+		}
+	}
+	s.renderModal(w, http.StatusOK, "fragment_execution_metrics.html", "execution-metrics-modal",
+		sessionFrom(r).CSRF, data)
+}
+
+// executionMetricsData is the metrics modal fragment context.
+type executionMetricsData struct {
+	Unavailable bool // file missing, unreadable, or structurally malformed
+	backup.DumpMetrics
 }
 
 // deleteBackupFiles removes a backup's local copy and every stored S3
