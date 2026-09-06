@@ -94,6 +94,8 @@ The upload and any safety dump are saved locally and listed in **Executions**. R
 
 DumpKeeper checks each database with `psql SELECT 1` every 15 minutes by default. Change the interval in **Settings**, or set it to `0` to disable checks.
 
+The **Ping** button on **Databases** also updates availability and latency, even when scheduled checks are disabled. A successful check closes any ongoing downtime period; past incidents remain in the history.
+
 **Availability** shows status, latency, and downtime history. **Dashboard** shows a summary, uptime over the last 24 hours, and recent executions.
 
 ## Configuration

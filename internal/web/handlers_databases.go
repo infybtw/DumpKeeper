@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"dumpkeeper/internal/db"
-	"dumpkeeper/internal/monitor"
 )
 
 // databaseRow is a database plus its usage count for the list page.
@@ -155,8 +154,7 @@ func (s *Server) databaseUpdate(w http.ResponseWriter, r *http.Request) {
 	s.redirectTo(w, r, "/databases", "Database "+dbe.Name+" updated.", "")
 }
 
-// databasePing verifies the configured connection on demand, using the same
-// probe (psql SELECT 1) as the background availability monitor.
+// databasePing checks and records availability just like the background monitor.
 func (s *Server) databasePing(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -168,8 +166,13 @@ func (s *Server) databasePing(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, detail, err := monitor.Ping(r.Context(), dbe); err != nil {
-		s.redirectTo(w, r, "/databases", "", "Could not reach database "+dbe.Name+": "+detail)
+	result, err := s.mon.Check(r.Context(), dbe)
+	if err != nil {
+		s.redirectTo(w, r, "/databases", "", "Could not record database check: "+err.Error())
+		return
+	}
+	if !result.OK {
+		s.redirectTo(w, r, "/databases", "", "Could not reach database "+dbe.Name+": "+result.Error)
 		return
 	}
 	s.redirectTo(w, r, "/databases", "Database "+dbe.Name+" is reachable.", "")

@@ -1069,16 +1069,46 @@ func (s *Store) SetSetting(key, value string) error {
 	return nil
 }
 
-// UpsertPingState records the latest probe result for a database.
-func (s *Store) UpsertPingState(st PingState) error {
-	_, err := s.sql.Exec(
+// RecordPingState atomically saves a probe result and updates its downtime period.
+func (s *Store) RecordPingState(st PingState) error {
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return fmt.Errorf("record ping state: %w", err)
+	}
+	defer tx.Rollback()
+	if st.OK {
+		_, err = tx.Exec(
+			`UPDATE ping_incidents SET ended_at=? WHERE database_id=? AND ended_at IS NULL`,
+			st.CheckedAt, st.DatabaseID)
+	} else {
+		var res sql.Result
+		res, err = tx.Exec(
+			`UPDATE ping_incidents SET error=? WHERE database_id=? AND ended_at IS NULL`,
+			st.Error, st.DatabaseID)
+		if err == nil {
+			var n int64
+			n, err = res.RowsAffected()
+			if err == nil && n == 0 {
+				_, err = tx.Exec(
+					`INSERT INTO ping_incidents (database_id, started_at, error) VALUES (?,?,?)`,
+					st.DatabaseID, st.CheckedAt, st.Error)
+			}
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("record ping incident: %w", err)
+	}
+	_, err = tx.Exec(
 		`INSERT INTO ping_state (database_id, ok, checked_at, duration_ms, error) VALUES (?,?,?,?,?)
   ON CONFLICT(database_id) DO UPDATE SET
     ok=excluded.ok, checked_at=excluded.checked_at,
     duration_ms=excluded.duration_ms, error=excluded.error`,
 		st.DatabaseID, b2i(st.OK), st.CheckedAt, st.DurationMs, st.Error)
 	if err != nil {
-		return fmt.Errorf("upsert ping state: %w", err)
+		return fmt.Errorf("record ping state: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit ping state: %w", err)
 	}
 	return nil
 }
@@ -1101,39 +1131,6 @@ func (s *Store) ListPingStates() (map[int64]PingState, error) {
 		states[st.DatabaseID] = st
 	}
 	return states, rows.Err()
-}
-
-// OpenIncident records the start of a downtime period.
-func (s *Store) OpenIncident(databaseID int64, startedAt, errMsg string) error {
-	_, err := s.sql.Exec(
-		`INSERT INTO ping_incidents (database_id, started_at, error) VALUES (?,?,?)`,
-		databaseID, startedAt, errMsg)
-	if err != nil {
-		return fmt.Errorf("open incident: %w", err)
-	}
-	return nil
-}
-
-// CloseOpenIncident ends the still-open downtime period of a database.
-func (s *Store) CloseOpenIncident(databaseID int64, endedAt string) error {
-	_, err := s.sql.Exec(
-		`UPDATE ping_incidents SET ended_at=? WHERE database_id=? AND ended_at IS NULL`,
-		endedAt, databaseID)
-	if err != nil {
-		return fmt.Errorf("close incident: %w", err)
-	}
-	return nil
-}
-
-// TouchOpenIncident refreshes the last seen error of an ongoing downtime.
-func (s *Store) TouchOpenIncident(databaseID int64, errMsg string) error {
-	_, err := s.sql.Exec(
-		`UPDATE ping_incidents SET error=? WHERE database_id=? AND ended_at IS NULL`,
-		errMsg, databaseID)
-	if err != nil {
-		return fmt.Errorf("touch incident: %w", err)
-	}
-	return nil
 }
 
 // ListIncidents returns downtime periods, ongoing ones first, then newest.

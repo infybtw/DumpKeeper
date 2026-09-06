@@ -156,66 +156,42 @@ func (m *Monitor) loop(ctx context.Context) {
 }
 
 // pass probes every database sequentially and updates state + incidents.
-// State transitions (per database, based on the stored previous result):
-//
-//	ok   after ok    -> nothing
-//	fail after ok    -> open incident
-//	fail after fail  -> refresh incident error
-//	ok   after fail  -> close incident
-//	no state         -> treated like the previous state being ok
 func (m *Monitor) pass(ctx context.Context) {
 	dbs, err := m.store.ListDatabases()
 	if err != nil {
 		slog.Error("monitor: list databases", "err", err)
 		return
 	}
-	states, err := m.store.ListPingStates()
-	if err != nil {
-		slog.Error("monitor: list ping states", "err", err)
-		return
-	}
 	for _, dbe := range dbs {
 		if ctx.Err() != nil {
 			return
 		}
-		m.probe(ctx, dbe, states[dbe.ID])
+		if _, err := m.Check(ctx, dbe); err != nil && ctx.Err() == nil {
+			slog.Error("monitor: check database", "database", dbe.Name, "err", err)
+		}
 	}
 }
 
-// probe runs one probe and applies the state-transition table above.
-func (m *Monitor) probe(ctx context.Context, dbe db.Database, prev db.PingState) {
+// Check probes a database and records its availability and downtime history.
+// An unreachable database is returned as a failed PingState; err indicates
+// cancellation or failure to persist the result.
+func (m *Monitor) Check(ctx context.Context, dbe db.Database) (db.PingState, error) {
 	latency, detail, err := Ping(ctx, dbe)
 	if ctx.Err() != nil {
-		return // shutdown aborted the probe: do not record a false failure
+		return db.PingState{}, ctx.Err() // Do not record cancellation as downtime.
 	}
-	now := db.Now()
 	result := db.PingState{
 		DatabaseID: dbe.ID,
 		OK:         err == nil,
-		CheckedAt:  now,
+		CheckedAt:  db.Now(),
 		DurationMs: latency.Milliseconds(),
 		Error:      detail,
 	}
-	switch {
-	case result.OK:
-		if prev.CheckedAt != "" && !prev.OK {
-			if err := m.store.CloseOpenIncident(dbe.ID, now); err != nil {
-				slog.Error("monitor: close incident", "database", dbe.Name, "err", err)
-			}
-			slog.Info("monitor: database back online", "database", dbe.Name)
-		}
-	case prev.CheckedAt == "" || prev.OK:
-		if err := m.store.OpenIncident(dbe.ID, now, detail); err != nil {
-			slog.Error("monitor: open incident", "database", dbe.Name, "err", err)
-		}
+	if err := m.store.RecordPingState(result); err != nil {
+		return result, err
+	}
+	if !result.OK {
 		slog.Warn("monitor: database unreachable", "database", dbe.Name, "err", detail)
-	default:
-		if err := m.store.TouchOpenIncident(dbe.ID, detail); err != nil {
-			slog.Error("monitor: touch incident", "database", dbe.Name, "err", err)
-		}
-		slog.Warn("monitor: database still unreachable", "database", dbe.Name, "err", detail)
 	}
-	if err := m.store.UpsertPingState(result); err != nil {
-		slog.Error("monitor: save ping state", "database", dbe.Name, "err", err)
-	}
+	return result, nil
 }
