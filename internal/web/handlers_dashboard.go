@@ -150,10 +150,11 @@ func (s *Server) dashboardData() (dashboardData, error) {
 
 	// Executions card: all-time status split.
 	completed, failed, running := counts["completed"], counts["failed"], counts["running"]
+	deleted := counts["deleted"]
 	execCard := dashCard{
-		Title: "Executions", Total: completed + failed + running,
-		Segments: donutSegments([]dashPart{{completed, "ok"}, {failed, "err"}, {running, "warn"}}),
-		Legend:   []dashLegend{{"completed", completed, "ok"}, {"failed", failed, "err"}, {"running", running, "warn"}},
+		Title: "Executions", Total: completed + failed + running + deleted,
+		Segments: donutSegments([]dashPart{{completed, "ok"}, {failed, "err"}, {running, "warn"}, {deleted, "muted"}}),
+		Legend:   []dashLegend{{"completed", completed, "ok"}, {"failed", failed, "err"}, {"running", running, "warn"}, {"deleted", deleted, "muted"}},
 	}
 
 	restCard := dashCard{Title: "Restorations", Total: restored}

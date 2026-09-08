@@ -197,7 +197,7 @@ tr:last-child td { border-bottom: none; }
 .status { font-weight: 600; font-size: 0.85rem; text-transform: capitalize; }
 .status-completed { color: var(--ok); }
 .status-failed { color: var(--err); }
-.status-running { color: var(--warn); }
+.status-deleted { color: var(--muted); }
 .status-up { color: var(--ok); }
 .status-down { color: var(--err); }
 .btn {

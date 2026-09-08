@@ -24,6 +24,9 @@ const (
 	StatusRunning   = "running"
 	StatusCompleted = "completed"
 	StatusFailed    = "failed"
+	// StatusDeleted marks an execution whose stored files were removed by
+	// retention: the row is kept as history but holds no file anywhere.
+	StatusDeleted = "deleted"
 )
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -85,7 +88,7 @@ type Job struct {
 type Backup struct {
 	ID          int64
 	JobID       int64
-	Status      string // running | completed | failed
+	Status      string // running | completed | failed | deleted
 	Trigger     string // manual | cron
 	StartedAt   string
 	FinishedAt  *string
@@ -944,11 +947,12 @@ func (s *Store) ListBackupsForDestination(destinationID int64) ([]Backup, error)
 	return out, rows.Err()
 }
 
-// LatestBackups returns the most recent backup per job, keyed by job ID.
+// LatestBackups returns the most recent non-deleted backup per job, keyed by
+// job ID. Rotated-out executions are history, not the job's last result.
 func (s *Store) LatestBackups() (map[int64]Backup, error) {
 	rows, err := s.sql.Query(
 		`SELECT ` + backupCols + ` FROM backups
-		 WHERE id IN (SELECT MAX(id) FROM backups GROUP BY job_id)`)
+		 WHERE id IN (SELECT MAX(id) FROM backups WHERE status<>? GROUP BY job_id)`, StatusDeleted)
 	if err != nil {
 		return nil, fmt.Errorf("latest backups: %w", err)
 	}
@@ -971,6 +975,25 @@ func (s *Store) DeleteBackup(id int64) error {
 		return fmt.Errorf("delete backup %d: %w", id, err)
 	}
 	return nil
+}
+
+// MarkBackupDeleted soft-deletes an execution: status flips to 'deleted',
+// stored_local is cleared and destination links removed (the files are gone),
+// while the history row — timestamps, size, filename — is kept. Retention
+// uses this instead of DeleteBackup so past executions stay visible.
+func (s *Store) MarkBackupDeleted(id int64) error {
+	tx, err := s.sql.Begin()
+	if err != nil {
+		return fmt.Errorf("mark backup %d deleted: %w", id, err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE backups SET status=?, stored_local=0 WHERE id=?`, StatusDeleted, id); err != nil {
+		return fmt.Errorf("mark backup %d deleted: %w", id, err)
+	}
+	if _, err := tx.Exec(`DELETE FROM backup_destinations WHERE backup_id=?`, id); err != nil {
+		return fmt.Errorf("mark backup %d deleted: %w", id, err)
+	}
+	return tx.Commit()
 }
 
 // ---- sessions ----
@@ -1157,7 +1180,7 @@ func (s *Store) ListIncidents(limit int64) ([]Incident, error) {
 // ---- dashboard stats ----
 
 // CountBackupsByStatus returns the number of backups per status
-// (running/completed/failed).
+// (running/completed/failed/deleted).
 func (s *Store) CountBackupsByStatus() (map[string]int64, error) {
 	rows, err := s.sql.Query(`SELECT status, COUNT(*) FROM backups GROUP BY status`)
 	if err != nil {
