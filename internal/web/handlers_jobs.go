@@ -14,7 +14,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// jobsFragmentData backs both the dashboard page and the htmx poll fragment.
+// jobsFragmentData backs both the jobs page and the htmx poll fragment.
 type jobsFragmentData struct {
 	Jobs []jobRow
 	CSRF string
@@ -177,10 +177,10 @@ func (s *Server) jobCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(created)
 	if isHtmx(r) {
-		s.htmxRedirect(w, "/", "Job "+created.Name+" created.", "")
+		s.htmxRedirect(w, "/jobs", "Job "+created.Name+" created.", "")
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+created.Name+" created.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+created.Name+" created.", "")
 }
 
 func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
@@ -235,10 +235,10 @@ func (s *Server) jobUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(job)
 	if isHtmx(r) {
-		s.htmxRedirect(w, "/", "Job "+job.Name+" updated.", "")
+		s.htmxRedirect(w, "/jobs", "Job "+job.Name+" updated.", "")
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+job.Name+" updated.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" updated.", "")
 }
 
 func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
@@ -262,10 +262,10 @@ func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
 		s.deleteBackupFiles(r, b)
 	}
 	if err := s.db.DeleteJob(job.ID); err != nil {
-		s.redirectTo(w, r, "/", "", "Could not delete job: "+err.Error())
+		s.redirectTo(w, r, "/jobs", "", "Could not delete job: "+err.Error())
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+job.Name+" deleted.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" deleted.", "")
 }
 
 // jobToggle flips a job between enabled (runs on schedule) and disabled
@@ -283,15 +283,15 @@ func (s *Server) jobToggle(w http.ResponseWriter, r *http.Request) {
 	}
 	job.Enabled = !job.Enabled
 	if err := s.db.SetJobEnabled(job.ID, job.Enabled); err != nil {
-		s.redirectTo(w, r, "/", "", "Could not update job: "+err.Error())
+		s.redirectTo(w, r, "/jobs", "", "Could not update job: "+err.Error())
 		return
 	}
 	s.sched.Reschedule(job)
 	if job.Enabled {
-		s.redirectTo(w, r, "/", "Job "+job.Name+" enabled.", "")
+		s.redirectTo(w, r, "/jobs", "Job "+job.Name+" enabled.", "")
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+job.Name+" disabled.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" disabled.", "")
 }
 
 func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
@@ -306,13 +306,13 @@ func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.engine.Trigger(id, backup.TriggerManual); err != nil {
 		if errors.Is(err, backup.ErrAlreadyRunning) {
-			s.redirectTo(w, r, "/", "", "A backup is already running for this job.")
+			s.redirectTo(w, r, "/jobs", "", "A backup is already running for this job.")
 			return
 		}
-		s.redirectTo(w, r, "/", "", err.Error())
+		s.redirectTo(w, r, "/jobs", "", err.Error())
 		return
 	}
-	s.redirectTo(w, r, "/", "Backup started.", "")
+	s.redirectTo(w, r, "/jobs", "Backup started.", "")
 }
 
 // parseJobForm reads and validates the job form. It always returns the form

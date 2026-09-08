@@ -1,7 +1,7 @@
 {{define "jobs-rows"}}
 {{range .Jobs}}
 <tr{{if not .Enabled}} class="job-disabled"{{end}}>
-  <td><strong>{{.Name}}</strong>{{if not .Enabled}} <span class="chip">disabled</span>{{end}}</td>
+  <td><strong>{{.Name}}</strong></td>
   <td>{{if .DatabaseName}}{{.DatabaseName}}<div class="hint"><code>{{.Target}}</code></div>{{else}}<span class="muted">database missing</span>{{end}}</td>
   <td>
     <div class="sched">
