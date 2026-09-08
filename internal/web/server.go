@@ -2,6 +2,7 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
 	"fmt"
 	"html/template"
@@ -21,6 +22,23 @@ import (
 
 //go:embed templates static
 var files embed.FS
+
+// staticAssetVersions changes each asset URL whenever its embedded contents change.
+// Versioned URLs may be cached indefinitely without serving stale UI styles or scripts.
+var staticAssetVersions = func() map[string]string {
+	const assetDir = "static/"
+	names := []string{"app.css", "htmx.min.js"}
+	versions := make(map[string]string, len(names))
+	for _, name := range names {
+		content, err := files.ReadFile(assetDir + name)
+		if err != nil {
+			panic("web: read embedded asset " + name + ": " + err.Error())
+		}
+		sum := sha256.Sum256(content)
+		versions[name] = fmt.Sprintf("%x", sum[:6])
+	}
+	return versions
+}()
 
 // Server owns the HTTP mux and all handlers.
 type Server struct {
@@ -140,11 +158,18 @@ func (s *Server) u(path string) string { return s.cfg.BasePath + path }
 
 // funcs extends the shared template funcs with the base-path-aware u.
 func (s *Server) funcs() template.FuncMap {
-	fm := make(template.FuncMap, len(funcMap)+1)
+	fm := make(template.FuncMap, len(funcMap)+2)
 	for k, v := range funcMap {
 		fm[k] = v
 	}
 	fm["u"] = s.u
+	fm["asset"] = func(name string) string {
+		path := s.u("/static/" + name)
+		if version, ok := staticAssetVersions[name]; ok {
+			return path + "?v=" + version
+		}
+		return path
+	}
 	return fm
 }
 

@@ -9,8 +9,8 @@ try {
   if (localStorage.getItem("dk-theme") === "dark") document.documentElement.dataset.theme = "dark";
 } catch {}
 </script>
-<link rel="stylesheet" href="{{u "/static/app.css"}}">
-<script src="{{u "/static/htmx.min.js"}}" defer></script>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "htmx.min.js"}}" defer></script>
 </head>
 <body{{if .CSRF}} class="has-sidebar"{{end}}>
 {{if .CSRF}}
