@@ -19,7 +19,10 @@ try {
     <span class="sidebar-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 2.9 7.3 7 8.8 4.1-1.5 7-4.5 7-8.8V5.8L12 3Z"/><path d="M12 8.2v5.6"/><path d="m9.6 11.4 2.4 2.4 2.4-2.4"/></svg></span>
     <span class="sidebar-label">DumpKeeper</span>
   </a>
-  <nav>
+  <button class="mobile-nav-toggle" type="button" aria-controls="primary-navigation" aria-expanded="false" aria-label="Open navigation">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <nav id="primary-navigation">
     <a href="{{u "/"}}" aria-label="Dashboard" title="Dashboard">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg></span><span class="sidebar-label">Dashboard</span>
     </a>
@@ -85,6 +88,7 @@ try {
   const body = document.body;
   const root = document.documentElement;
   const sidebarToggle = document.querySelector(".sidebar-toggle");
+  const mobileNavToggle = document.querySelector(".mobile-nav-toggle");
   const themeToggle = document.querySelector(".theme-toggle");
 
   if (sidebarToggle) {
@@ -106,6 +110,20 @@ try {
       try {
         localStorage.setItem("dk-sidebar-collapsed", collapsed ? "1" : "0");
       } catch {}
+    });
+  }
+
+  if (mobileNavToggle) {
+    const setMobileNavOpen = (open) => {
+      body.classList.toggle("mobile-nav-open", open);
+      mobileNavToggle.setAttribute("aria-expanded", String(open));
+      mobileNavToggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    };
+    mobileNavToggle.addEventListener("click", () => {
+      setMobileNavOpen(!body.classList.contains("mobile-nav-open"));
+    });
+    document.querySelector(".sidebar nav")?.addEventListener("click", (event) => {
+      if (event.target.closest("a")) setMobileNavOpen(false);
     });
   }
 
