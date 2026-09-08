@@ -32,14 +32,15 @@ func New(trigger func(jobID int64, trigger string) error) *Scheduler {
 	return s
 }
 
-// Reschedule replaces the cron entry for job. An empty schedule removes the
-// entry; an unparsable schedule is logged and skipped (the job form already
-// validates schedules with cron.ParseStandard before persisting).
+// Reschedule replaces the cron entry for job. An empty schedule or a
+// disabled job removes the entry; an unparsable schedule is logged and
+// skipped (the job form already validates schedules with cron.ParseStandard
+// before persisting).
 func (s *Scheduler) Reschedule(job db.Job) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.removeLocked(job.ID)
-	if job.Schedule == "" {
+	if job.Schedule == "" || !job.Enabled {
 		return
 	}
 	id, err := s.c.AddFunc(job.Schedule, func() {

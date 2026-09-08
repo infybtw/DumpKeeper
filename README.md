@@ -69,6 +69,8 @@ Set a strong password, start the service, and open **http://127.0.0.1:8080**. Fo
 
 Schedules use five-field cron syntax. For example, `0 2 * * *` runs daily at 02:00. Leave the schedule empty for manual backups only. Set **Keep last** to `0` to disable retention.
 
+To pause a job without deleting it, use **Disable** on the jobs list (or clear **Enabled** in the job form). A disabled job never runs on schedule; its settings, history, and stored backups stay untouched, and **Back up now** still works. **Enable** resumes the schedule.
+
 Backups are plain-text files named `{job}-{YYYYMMDDTHHMMSSZ}.sql`. DumpKeeper runs `pg_dump` with `--clean --if-exists --no-owner --no-privileges`: dumps contain statements to drop and recreate objects, but omit ownership and access rights.
 
 A run is marked `completed` if at least one local or S3 copy is saved, even if other destinations fail. Destination errors are recorded with the execution. After each completed run, retention removes older completed backups from local storage and all S3 destinations that hold them.

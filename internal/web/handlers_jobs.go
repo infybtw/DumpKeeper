@@ -14,7 +14,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// jobsFragmentData backs both the dashboard page and the htmx poll fragment.
+// jobsFragmentData backs both the jobs page and the htmx poll fragment.
 type jobsFragmentData struct {
 	Jobs []jobRow
 	CSRF string
@@ -27,6 +27,7 @@ type jobRow struct {
 	DatabaseName     string
 	Target           string
 	Schedule         string
+	Enabled          bool
 	DestLocal        bool
 	DestinationNames []string
 	KeepLast         int64
@@ -77,6 +78,7 @@ func (s *Server) jobRows() ([]jobRow, error) {
 			ID:        j.ID,
 			Name:      j.Name,
 			Schedule:  j.Schedule,
+			Enabled:   j.Enabled,
 			DestLocal: j.DestLocal,
 			KeepLast:  j.KeepLast,
 		}
@@ -109,6 +111,7 @@ type jobForm struct {
 	Name     string
 	Schedule string
 	KeepLast string
+	Enabled  bool
 
 	DatabaseID     int64
 	DestLocal      bool
@@ -120,9 +123,8 @@ type jobForm struct {
 
 // IsNew distinguishes create from edit in the template.
 func (f jobForm) IsNew() bool { return f.ID == 0 }
-
 func (s *Server) defaultJobForm(action string) jobForm {
-	f := jobForm{Action: action, KeepLast: "7", DestLocal: true}
+	f := jobForm{Action: action, KeepLast: "7", Enabled: true, DestLocal: true}
 	f.Databases, _ = s.db.ListDatabases()
 	f.Destinations, _ = s.db.ListDestinations()
 	return f
@@ -175,10 +177,10 @@ func (s *Server) jobCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(created)
 	if isHtmx(r) {
-		s.htmxRedirect(w, "/", "Job "+created.Name+" created.", "")
+		s.htmxRedirect(w, "/jobs", "Job "+created.Name+" created.", "")
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+created.Name+" created.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+created.Name+" created.", "")
 }
 
 func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +195,7 @@ func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := s.defaultJobForm(jobAction(job.ID))
-	f.ID = job.ID
+	f.Enabled = job.Enabled
 	f.Name = job.Name
 	f.Schedule = job.Schedule
 	f.KeepLast = strconv.FormatInt(job.KeepLast, 10)
@@ -233,10 +235,10 @@ func (s *Server) jobUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sched.Reschedule(job)
 	if isHtmx(r) {
-		s.htmxRedirect(w, "/", "Job "+job.Name+" updated.", "")
+		s.htmxRedirect(w, "/jobs", "Job "+job.Name+" updated.", "")
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+job.Name+" updated.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" updated.", "")
 }
 
 func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
@@ -260,10 +262,36 @@ func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
 		s.deleteBackupFiles(r, b)
 	}
 	if err := s.db.DeleteJob(job.ID); err != nil {
-		s.redirectTo(w, r, "/", "", "Could not delete job: "+err.Error())
+		s.redirectTo(w, r, "/jobs", "", "Could not delete job: "+err.Error())
 		return
 	}
-	s.redirectTo(w, r, "/", "Job "+job.Name+" deleted.", "")
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" deleted.", "")
+}
+
+// jobToggle flips a job between enabled (runs on schedule) and disabled
+// (paused, kept for later). Manual backups still work while disabled.
+func (s *Server) jobToggle(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	job, err := s.db.GetJob(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	job.Enabled = !job.Enabled
+	if err := s.db.SetJobEnabled(job.ID, job.Enabled); err != nil {
+		s.redirectTo(w, r, "/jobs", "", "Could not update job: "+err.Error())
+		return
+	}
+	s.sched.Reschedule(job)
+	if job.Enabled {
+		s.redirectTo(w, r, "/jobs", "Job "+job.Name+" enabled.", "")
+		return
+	}
+	s.redirectTo(w, r, "/jobs", "Job "+job.Name+" disabled.", "")
 }
 
 func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
@@ -278,13 +306,13 @@ func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.engine.Trigger(id, backup.TriggerManual); err != nil {
 		if errors.Is(err, backup.ErrAlreadyRunning) {
-			s.redirectTo(w, r, "/", "", "A backup is already running for this job.")
+			s.redirectTo(w, r, "/jobs", "", "A backup is already running for this job.")
 			return
 		}
-		s.redirectTo(w, r, "/", "", err.Error())
+		s.redirectTo(w, r, "/jobs", "", err.Error())
 		return
 	}
-	s.redirectTo(w, r, "/", "Backup started.", "")
+	s.redirectTo(w, r, "/jobs", "Backup started.", "")
 }
 
 // parseJobForm reads and validates the job form. It always returns the form
@@ -296,6 +324,7 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 		Name:      strings.TrimSpace(r.FormValue("name")),
 		Schedule:  strings.TrimSpace(r.FormValue("schedule")),
 		KeepLast:  strings.TrimSpace(r.FormValue("keep_last")),
+		Enabled:   r.FormValue("enabled") == "1",
 		DestLocal: r.FormValue("dest_local") == "1",
 	}
 	f.Databases, _ = s.db.ListDatabases()
@@ -349,7 +378,7 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 	}
 	job := db.Job{
 		ID: id, Name: f.Name, DatabaseID: f.DatabaseID,
-		Schedule: f.Schedule, DestLocal: f.DestLocal,
+		Schedule: f.Schedule, Enabled: f.Enabled, DestLocal: f.DestLocal,
 		KeepLast: keepLast, DestinationIDs: f.DestinationIDs,
 	}
 	return job, f
