@@ -14,7 +14,7 @@ import (
 
 const (
 	sessionCookie = "dk_session"
-	sessionTTL    = 168 * time.Hour
+	sessionTTL    = 12 * time.Hour
 )
 
 type ctxKey struct{}
