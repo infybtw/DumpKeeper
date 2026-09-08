@@ -1,9 +1,20 @@
 {{define "jobs-rows"}}
 {{range .Jobs}}
-<tr>
-  <td><strong>{{.Name}}</strong></td>
+<tr{{if not .Enabled}} class="job-disabled"{{end}}>
+  <td><strong>{{.Name}}</strong>{{if not .Enabled}} <span class="chip">disabled</span>{{end}}</td>
   <td>{{if .DatabaseName}}{{.DatabaseName}}<div class="hint"><code>{{.Target}}</code></div>{{else}}<span class="muted">database missing</span>{{end}}</td>
-  <td>{{if .Schedule}}<code>{{.Schedule}}</code>{{else}}<span class="muted">manual</span>{{end}}</td>
+  <td>
+    <div class="sched">
+      <form class="inline" method="post" action="{{u "/jobs"}}/{{.ID}}/toggle">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <label class="switch">
+          <input type="checkbox" {{if .Enabled}}checked{{end}} onchange="this.form.submit()" aria-label="{{if .Enabled}}Disable{{else}}Enable{{end}} job {{.Name}}">
+          <span class="slider"></span>
+        </label>
+      </form>
+      {{if .Schedule}}<code>{{.Schedule}}</code>{{else}}<span class="muted">manual</span>{{end}}
+    </div>
+  </td>
   <td>
     {{if .DestLocal}}<span class="chip">local</span>{{end}}
     {{range .DestinationNames}}<span class="chip">{{.}}</span>{{end}}

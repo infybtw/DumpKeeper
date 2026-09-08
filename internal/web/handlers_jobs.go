@@ -27,6 +27,7 @@ type jobRow struct {
 	DatabaseName     string
 	Target           string
 	Schedule         string
+	Enabled          bool
 	DestLocal        bool
 	DestinationNames []string
 	KeepLast         int64
@@ -77,6 +78,7 @@ func (s *Server) jobRows() ([]jobRow, error) {
 			ID:        j.ID,
 			Name:      j.Name,
 			Schedule:  j.Schedule,
+			Enabled:   j.Enabled,
 			DestLocal: j.DestLocal,
 			KeepLast:  j.KeepLast,
 		}
@@ -109,6 +111,7 @@ type jobForm struct {
 	Name     string
 	Schedule string
 	KeepLast string
+	Enabled  bool
 
 	DatabaseID     int64
 	DestLocal      bool
@@ -120,9 +123,8 @@ type jobForm struct {
 
 // IsNew distinguishes create from edit in the template.
 func (f jobForm) IsNew() bool { return f.ID == 0 }
-
 func (s *Server) defaultJobForm(action string) jobForm {
-	f := jobForm{Action: action, KeepLast: "7", DestLocal: true}
+	f := jobForm{Action: action, KeepLast: "7", Enabled: true, DestLocal: true}
 	f.Databases, _ = s.db.ListDatabases()
 	f.Destinations, _ = s.db.ListDestinations()
 	return f
@@ -193,7 +195,7 @@ func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := s.defaultJobForm(jobAction(job.ID))
-	f.ID = job.ID
+	f.Enabled = job.Enabled
 	f.Name = job.Name
 	f.Schedule = job.Schedule
 	f.KeepLast = strconv.FormatInt(job.KeepLast, 10)
@@ -266,6 +268,32 @@ func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
 	s.redirectTo(w, r, "/", "Job "+job.Name+" deleted.", "")
 }
 
+// jobToggle flips a job between enabled (runs on schedule) and disabled
+// (paused, kept for later). Manual backups still work while disabled.
+func (s *Server) jobToggle(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	job, err := s.db.GetJob(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	job.Enabled = !job.Enabled
+	if err := s.db.SetJobEnabled(job.ID, job.Enabled); err != nil {
+		s.redirectTo(w, r, "/", "", "Could not update job: "+err.Error())
+		return
+	}
+	s.sched.Reschedule(job)
+	if job.Enabled {
+		s.redirectTo(w, r, "/", "Job "+job.Name+" enabled.", "")
+		return
+	}
+	s.redirectTo(w, r, "/", "Job "+job.Name+" disabled.", "")
+}
+
 func (s *Server) jobBackup(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -296,6 +324,7 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 		Name:      strings.TrimSpace(r.FormValue("name")),
 		Schedule:  strings.TrimSpace(r.FormValue("schedule")),
 		KeepLast:  strings.TrimSpace(r.FormValue("keep_last")),
+		Enabled:   r.FormValue("enabled") == "1",
 		DestLocal: r.FormValue("dest_local") == "1",
 	}
 	f.Databases, _ = s.db.ListDatabases()
@@ -349,7 +378,7 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 	}
 	job := db.Job{
 		ID: id, Name: f.Name, DatabaseID: f.DatabaseID,
-		Schedule: f.Schedule, DestLocal: f.DestLocal,
+		Schedule: f.Schedule, Enabled: f.Enabled, DestLocal: f.DestLocal,
 		KeepLast: keepLast, DestinationIDs: f.DestinationIDs,
 	}
 	return job, f

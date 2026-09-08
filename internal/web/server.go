@@ -42,7 +42,7 @@ type Server struct {
 //	GET  /jobs                              GET  /fragment/jobs
 //	GET  /jobs/new                         POST /jobs/new
 //	GET  /jobs/{id}/edit                   POST /jobs/{id}/edit         POST /jobs/{id}/delete
-//	POST /jobs/{id}/backup
+//	POST /jobs/{id}/toggle                 POST /jobs/{id}/backup
 //	GET  /databases                        GET  /databases/new          POST /databases/new
 //	GET  /databases/{id}/edit              POST /databases/{id}/edit    POST /databases/{id}/delete
 //	GET  /destinations                     GET  /destinations/new       POST /destinations/new
@@ -70,6 +70,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("GET /jobs/{id}/edit", s.requireAuth(s.jobEditForm))
 	mux.HandleFunc("POST /jobs/{id}/edit", s.requireAuth(s.jobUpdate))
 	mux.HandleFunc("POST /jobs/{id}/delete", s.requireAuth(s.jobDelete))
+	mux.HandleFunc("POST /jobs/{id}/toggle", s.requireAuth(s.jobToggle))
 	mux.HandleFunc("POST /jobs/{id}/backup", s.requireAuth(s.jobBackup))
 
 	mux.HandleFunc("GET /databases", s.requireAuth(s.databasesList))

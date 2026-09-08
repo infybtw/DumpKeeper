@@ -28,6 +28,10 @@
       {{end}}
     </div>
   </div>
+  <div class="checks">
+    <label class="check"><input type="checkbox" name="enabled" value="1" {{if .Data.Enabled}}checked{{end}}> Enabled</label>
+    <span class="hint">Disabled jobs keep their settings but never run on schedule. “Back up now” still works.</span>
+  </div>
 {{end}}
 
 {{define "job-modal"}}

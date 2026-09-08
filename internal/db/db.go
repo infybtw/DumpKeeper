@@ -77,6 +77,7 @@ type Job struct {
 	Name           string
 	DatabaseID     int64
 	Schedule       string // cron expression, "" = manual only
+	Enabled        bool   // false = paused: never runs on schedule
 	DestLocal      bool
 	KeepLast       int64 // 0 = unlimited
 	DestinationIDs []int64
@@ -145,6 +146,7 @@ var ddl = []string{
   schedule TEXT NOT NULL DEFAULT '',
   dest_local INTEGER NOT NULL DEFAULT 1,
   keep_last INTEGER NOT NULL DEFAULT 7,
+  enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 )`,
 	`CREATE TABLE IF NOT EXISTS job_destinations (
@@ -217,6 +219,10 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
 	if err := s.migrateV2(); err != nil {
+		sq.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	if err := s.migrateV3(); err != nil {
 		sq.Close()
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
@@ -434,6 +440,20 @@ func (s *Store) migrateV2() error {
 	return nil
 }
 
+// migrateV3 adds jobs.enabled (pause without delete). Detected via the
+// missing column; a no-op on fresh databases, where the DDL already
+// creates it. Existing jobs default to enabled.
+func (s *Store) migrateV3() error {
+	has, err := s.tableHasColumn("jobs", "enabled")
+	if err != nil || has {
+		return err
+	}
+	if _, err := s.sql.Exec(`ALTER TABLE jobs ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`); err != nil {
+		return fmt.Errorf("migrate jobs.enabled: %w", err)
+	}
+	return nil
+}
+
 func b2i(b bool) int {
 	if b {
 		return 1
@@ -616,14 +636,13 @@ func (s *Store) DestinationNameExists(name string, excludeID int64) (bool, error
 	return n > 0, err
 }
 
-// ---- jobs ----
-
-const jobCols = "id, name, database_id, schedule, dest_local, keep_last, created_at, updated_at"
+const jobCols = "id, name, database_id, schedule, enabled, dest_local, keep_last, created_at, updated_at"
 
 func scanJob(row interface{ Scan(dest ...any) error }) (Job, error) {
 	var j Job
-	var destLocal int
-	err := row.Scan(&j.ID, &j.Name, &j.DatabaseID, &j.Schedule, &destLocal, &j.KeepLast, &j.CreatedAt, &j.UpdatedAt)
+	var enabled, destLocal int
+	err := row.Scan(&j.ID, &j.Name, &j.DatabaseID, &j.Schedule, &enabled, &destLocal, &j.KeepLast, &j.CreatedAt, &j.UpdatedAt)
+	j.Enabled = enabled == 1
 	j.DestLocal = destLocal == 1
 	return j, err
 }
@@ -656,8 +675,8 @@ func (s *Store) CreateJob(j Job) (Job, error) {
 	}
 	defer tx.Rollback()
 	res, err := tx.Exec(
-		`INSERT INTO jobs (name, database_id, schedule, dest_local, keep_last, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`,
-		j.Name, j.DatabaseID, j.Schedule, b2i(j.DestLocal), j.KeepLast, now, now)
+		`INSERT INTO jobs (name, database_id, schedule, enabled, dest_local, keep_last, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`,
+		j.Name, j.DatabaseID, j.Schedule, b2i(j.Enabled), b2i(j.DestLocal), j.KeepLast, now, now)
 	if err != nil {
 		return Job{}, fmt.Errorf("create job: %w", err)
 	}
@@ -679,8 +698,8 @@ func (s *Store) UpdateJob(j Job) error {
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(
-		`UPDATE jobs SET name=?, database_id=?, schedule=?, dest_local=?, keep_last=?, updated_at=? WHERE id=?`,
-		j.Name, j.DatabaseID, j.Schedule, b2i(j.DestLocal), j.KeepLast, Now(), j.ID); err != nil {
+		`UPDATE jobs SET name=?, database_id=?, schedule=?, enabled=?, dest_local=?, keep_last=?, updated_at=? WHERE id=?`,
+		j.Name, j.DatabaseID, j.Schedule, b2i(j.Enabled), b2i(j.DestLocal), j.KeepLast, Now(), j.ID); err != nil {
 		return fmt.Errorf("update job %d: %w", j.ID, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM job_destinations WHERE job_id=?`, j.ID); err != nil {
@@ -692,6 +711,14 @@ func (s *Store) UpdateJob(j Job) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// SetJobEnabled flips the pause flag without touching any other field.
+func (s *Store) SetJobEnabled(id int64, enabled bool) error {
+	if _, err := s.sql.Exec(`UPDATE jobs SET enabled=?, updated_at=? WHERE id=?`, b2i(enabled), Now(), id); err != nil {
+		return fmt.Errorf("set job %d enabled: %w", id, err)
+	}
+	return nil
 }
 
 // DeleteJob removes the job; its links and backups cascade.
