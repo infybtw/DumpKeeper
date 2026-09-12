@@ -39,6 +39,23 @@ func New(trigger func(jobID int64, trigger string) error) *Scheduler {
 func (s *Scheduler) Reschedule(job db.Job) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rescheduleLocked(job)
+}
+
+// Replace removes every scheduled job and schedules the supplied set. It is
+// used after importing a configuration snapshot, whose job IDs may differ.
+func (s *Scheduler) Replace(jobs []db.Job) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for jobID := range s.entries {
+		s.removeLocked(jobID)
+	}
+	for _, job := range jobs {
+		s.rescheduleLocked(job)
+	}
+}
+
+func (s *Scheduler) rescheduleLocked(job db.Job) {
 	s.removeLocked(job.ID)
 	if job.Schedule == "" || !job.Enabled {
 		return

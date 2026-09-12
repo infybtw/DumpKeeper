@@ -21,4 +21,15 @@
     <button class="btn btn-primary" type="submit">Download configuration backup</button>
   </div>
 </form>
+<h2>Restore configuration</h2>
+<form class="form" method="post" action="{{u "/settings/restore"}}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Configuration backup file
+    <input type="file" name="backup" accept=".db,application/octet-stream" required>
+  </label>
+  <p class="hint"><strong>This replaces all current database profiles, destinations, jobs, settings, history, and sessions with the uploaded backup. PostgreSQL dump files are not restored.</strong></p>
+  <div>
+    <button class="btn btn-primary" type="submit">Restore configuration backup</button>
+  </div>
+</form>
 {{end}}
