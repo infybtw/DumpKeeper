@@ -114,6 +114,24 @@ func (m *Monitor) SetInterval(d time.Duration) error {
 	return nil
 }
 
+// ReloadInterval applies the interval stored in the database after a
+// configuration snapshot has replaced its settings.
+func (m *Monitor) ReloadInterval() {
+	interval := DefaultInterval
+	if v, err := m.store.GetSetting(db.SettingPingInterval); err == nil {
+		if secs, err := strconv.ParseInt(v, 10, 64); err == nil && secs >= 0 {
+			interval = time.Duration(secs) * time.Second
+		}
+	}
+	m.mu.Lock()
+	m.interval = interval
+	m.mu.Unlock()
+	select {
+	case m.kick <- struct{}{}:
+	default:
+	}
+}
+
 // Start launches the probe loop; it probes once right away so status and
 // incidents appear without waiting a full interval.
 func (m *Monitor) Start() {

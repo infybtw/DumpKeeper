@@ -241,6 +241,75 @@ func (s *Store) Snapshot(ctx context.Context, path string) error {
 	return nil
 }
 
+// RestoreSnapshot replaces the database contents with a DumpKeeper SQLite
+// snapshot. The uploaded file is opened and migrated first, so snapshots from
+// older supported versions can be restored into the current schema.
+func (s *Store) RestoreSnapshot(ctx context.Context, path string) error {
+	if err := validateSnapshot(path); err != nil {
+		return err
+	}
+	imported, err := Open(path)
+	if err != nil {
+		return fmt.Errorf("open configuration backup: %w", err)
+	}
+	if err := imported.Close(); err != nil {
+		return fmt.Errorf("close configuration backup: %w", err)
+	}
+
+	conn, err := s.sql.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("get database connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+	defer conn.ExecContext(context.Background(), `PRAGMA foreign_keys=ON`)
+	if _, err := conn.ExecContext(ctx, `ATTACH DATABASE ? AS imported`, path); err != nil {
+		return fmt.Errorf("attach configuration backup: %w", err)
+	}
+	defer conn.ExecContext(context.Background(), `DETACH DATABASE imported`)
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin configuration restore: %w", err)
+	}
+	defer tx.Rollback()
+	for _, table := range []string{"backup_destinations", "job_destinations", "ping_state", "ping_incidents", "backups", "jobs", "destinations", "databases", "settings", "sessions"} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table); err != nil {
+			return fmt.Errorf("clear %s: %w", table, err)
+		}
+	}
+	for _, table := range []string{"databases", "destinations", "jobs", "job_destinations", "backups", "backup_destinations", "settings", "ping_state", "ping_incidents", "sessions"} {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO `+table+` SELECT * FROM imported.`+table); err != nil {
+			return fmt.Errorf("restore %s: %w", table, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit configuration restore: %w", err)
+	}
+	return nil
+}
+
+// validateSnapshot rejects an empty SQLite file before Open could initialize
+// it with a fresh schema and accidentally replace the live configuration.
+func validateSnapshot(path string) error {
+	source, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return fmt.Errorf("open configuration backup: %w", err)
+	}
+	defer source.Close()
+	const expectedTables = 4
+	var found int
+	if err := source.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('databases', 'jobs', 'backups', 'settings')`).Scan(&found); err != nil {
+		return fmt.Errorf("read configuration backup: %w", err)
+	}
+	if found != expectedTables {
+		return fmt.Errorf("configuration backup is not a DumpKeeper database")
+	}
+	return nil
+}
+
 // migrateV1 reshapes the MVP layout in place: jobs used to embed database
 // credentials and S3 was one global setting. Detected via the legacy
 // jobs.dbname column; a no-op on fresh databases. A database entity is
@@ -978,7 +1047,7 @@ func (s *Store) ListBackupsForDestination(destinationID int64) ([]Backup, error)
 // job ID. Rotated-out executions are history, not the job's last result.
 func (s *Store) LatestBackups() (map[int64]Backup, error) {
 	rows, err := s.sql.Query(
-		`SELECT ` + backupCols + ` FROM backups
+		`SELECT `+backupCols+` FROM backups
 		 WHERE id IN (SELECT MAX(id) FROM backups WHERE status<>? GROUP BY job_id)`, StatusDeleted)
 	if err != nil {
 		return nil, fmt.Errorf("latest backups: %w", err)

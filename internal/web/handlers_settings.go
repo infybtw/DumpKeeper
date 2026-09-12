@@ -13,6 +13,8 @@ import (
 	"dumpkeeper/internal/db"
 )
 
+const maxConfigBackupSize = 256 << 20
+
 // settingsData is the display shape of the settings page.
 type settingsData struct {
 	IntervalMinutes string
@@ -74,6 +76,64 @@ func (s *Server) settingsBackup(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, f); err != nil {
 		slog.Warn("send configuration backup", "err", err)
 	}
+}
+
+func (s *Server) settingsRestore(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxConfigBackupSize)
+	if err := r.ParseMultipartForm(maxConfigBackupSize); err != nil {
+		s.redirectTo(w, r, "/settings", "", "Configuration backup must be a SQLite file smaller than 256 MB.")
+		return
+	}
+	upload, _, err := r.FormFile("backup")
+	if err != nil {
+		s.redirectTo(w, r, "/settings", "", "Choose a configuration backup file to upload.")
+		return
+	}
+	defer upload.Close()
+
+	f, err := os.CreateTemp(s.cfg.DataDir, "dumpkeeper-config-import-*.db")
+	if err != nil {
+		slog.Error("create configuration import file", "err", err)
+		s.redirectTo(w, r, "/settings", "", "Could not prepare the configuration backup.")
+		return
+	}
+	path := f.Name()
+	defer os.Remove(path)
+	defer os.Remove(path + "-wal")
+	defer os.Remove(path + "-shm")
+	defer f.Close()
+	if _, err := io.Copy(f, upload); err != nil {
+		slog.Warn("save configuration import", "err", err)
+		s.redirectTo(w, r, "/settings", "", "Could not read the configuration backup.")
+		return
+	}
+	if err := f.Close(); err != nil {
+		slog.Warn("close configuration import", "err", err)
+		s.redirectTo(w, r, "/settings", "", "Could not read the configuration backup.")
+		return
+	}
+
+	if err := s.db.RestoreSnapshot(r.Context(), path); err != nil {
+		slog.Warn("restore configuration backup", "err", err)
+		s.redirectTo(w, r, "/settings", "", "Could not restore configuration backup: "+err.Error())
+		return
+	}
+	// Keep the uploading user authenticated even when the snapshot has older
+	// session rows; all other sessions are restored from the snapshot.
+	sess := sessionFrom(r)
+	if err := s.db.DeleteSession(sess.Token); err == nil {
+		if err := s.db.CreateSession(sess.Token, sess.CSRF, sess.ExpiresAt); err != nil {
+			slog.Warn("restore active session after configuration import", "err", err)
+		}
+	}
+	jobs, err := s.db.ListJobs()
+	if err != nil {
+		slog.Error("load jobs after configuration import", "err", err)
+	} else {
+		s.sched.Replace(jobs)
+	}
+	s.mon.ReloadInterval()
+	s.redirectTo(w, r, "/settings", "Configuration backup restored.", "")
 }
 
 // availabilityRow is the display shape of one availability-status row.
