@@ -19,8 +19,15 @@ import (
 	"dumpkeeper/internal/db"
 )
 
-// pingTimeout caps a single probe, exactly like the manual Ping button.
-const pingTimeout = 10 * time.Second
+const (
+	// pingTimeout caps a single probe, exactly like the manual Ping button.
+	pingTimeout = 10 * time.Second
+
+	// A database can still be starting while DumpKeeper comes up. Do not open a
+	// downtime incident until it has missed the initial probe and five retries.
+	pingRetryCount = 5
+	pingRetryDelay = 15 * time.Second
+)
 
 // DefaultInterval is used when the ping_interval_seconds setting is absent.
 const DefaultInterval = 15 * time.Minute
@@ -184,7 +191,7 @@ func (m *Monitor) pass(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if _, err := m.Check(ctx, dbe); err != nil && ctx.Err() == nil {
+		if _, err := m.checkWithRetries(ctx, dbe); err != nil && ctx.Err() == nil {
 			slog.Error("monitor: check database", "database", dbe.Name, "err", err)
 		}
 	}
@@ -194,7 +201,17 @@ func (m *Monitor) pass(ctx context.Context) {
 // An unreachable database is returned as a failed PingState; err indicates
 // cancellation or failure to persist the result.
 func (m *Monitor) Check(ctx context.Context, dbe db.Database) (db.PingState, error) {
-	latency, detail, err := Ping(ctx, dbe)
+	return m.check(ctx, dbe, Ping)
+}
+
+func (m *Monitor) checkWithRetries(ctx context.Context, dbe db.Database) (db.PingState, error) {
+	return m.check(ctx, dbe, func(ctx context.Context, dbe db.Database) (time.Duration, string, error) {
+		return pingWithRetries(ctx, dbe, pingRetryCount, pingRetryDelay)
+	})
+}
+
+func (m *Monitor) check(ctx context.Context, dbe db.Database, probe func(context.Context, db.Database) (time.Duration, string, error)) (db.PingState, error) {
+	latency, detail, err := probe(ctx, dbe)
 	if ctx.Err() != nil {
 		return db.PingState{}, ctx.Err() // Do not record cancellation as downtime.
 	}
@@ -212,4 +229,20 @@ func (m *Monitor) Check(ctx context.Context, dbe db.Database) (db.PingState, err
 		slog.Warn("monitor: database unreachable", "database", dbe.Name, "err", detail)
 	}
 	return result, nil
+}
+
+// pingWithRetries retries an unsuccessful probe before its outcome is recorded.
+func pingWithRetries(ctx context.Context, dbe db.Database, retries int, delay time.Duration) (time.Duration, string, error) {
+	latency, detail, err := Ping(ctx, dbe)
+	for attempt := 0; err != nil && attempt < retries; attempt++ {
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return latency, detail, ctx.Err()
+		case <-timer.C:
+		}
+		latency, detail, err = Ping(ctx, dbe)
+	}
+	return latency, detail, err
 }

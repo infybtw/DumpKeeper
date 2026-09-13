@@ -1,13 +1,13 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
 
 	"dumpkeeper/internal/db"
 	"dumpkeeper/internal/monitor"
@@ -34,25 +34,15 @@ func TestDatabasePingUpdatesAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	mon := monitor.New(store)
-	mon.Start()
-	// Establish the outage through the background monitor, not the handler.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		states, err := store.ListPingStates()
-		if err != nil {
-			mon.Stop()
-			t.Fatal(err)
-		}
-		if st, ok := states[dbe.ID]; ok && !st.OK {
-			break
-		}
-		if time.Now().After(deadline) {
-			mon.Stop()
-			t.Fatal("background monitor did not record the outage")
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Seed an outage without waiting for the background monitor's production
+	// retry delay; retry behaviour is covered in the monitor package.
+	result, err := mon.Check(context.Background(), dbe)
+	if err != nil {
+		t.Fatal(err)
 	}
-	mon.Stop() // Manual checks must work without the background loop.
+	if result.OK {
+		t.Fatal("initial ping unexpectedly succeeded")
+	}
 	s := &Server{db: store, mon: mon}
 
 	check := func(wantUp bool, wantIncidents int) {
