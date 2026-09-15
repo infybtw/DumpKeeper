@@ -13,13 +13,14 @@ import (
 
 // runDump runs pg_dump for the job's database, writing a plain-text SQL
 // dump to path. --clean/--if-exists bake DROP statements into the file, so
-// replaying it with psql drops and recreates objects; --no-owner and
+// replaying it drops and recreates objects; --inserts makes it executable by
+// SQL clients that cannot handle COPY FROM stdin. --no-owner and
 // --no-privileges keep ownership and grants out. Credentials travel via
 // PGPASSWORD/PGSSLMODE so they never appear in argv.
 func runDump(ctx context.Context, dbe db.Database, path string) error {
 	cmd := exec.CommandContext(ctx, "pg_dump",
 		"--format=plain",
-		"--clean", "--if-exists", "--no-owner", "--no-privileges",
+		"--clean", "--if-exists", "--inserts", "--no-owner", "--no-privileges",
 		"--file="+path,
 		"--host="+dbe.Host,
 		"--port="+strconv.Itoa(dbe.Port),
