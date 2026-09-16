@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,12 +19,98 @@ const maxConfigBackupSize = 256 << 20
 // settingsData is the display shape of the settings page.
 type settingsData struct {
 	IntervalMinutes string
+	Dashboard       dashboardPanels
+}
+
+// dashboardPanels controls which independent dashboard sections are shown.
+// The value is global because DumpKeeper has a single authenticated account.
+type dashboardPanels struct {
+	Summary    bool
+	Executions bool
+	Rows       bool
+	Uptime     bool
+	Recent     bool
+}
+
+func defaultDashboardPanels() dashboardPanels {
+	return dashboardPanels{Summary: true, Executions: true, Rows: true, Uptime: true, Recent: true}
+}
+
+func (s *Server) dashboardPanels() (dashboardPanels, error) {
+	value, err := s.db.GetSetting(db.SettingDashboardPanels)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return defaultDashboardPanels(), nil
+		}
+		return dashboardPanels{}, err
+	}
+	var panels dashboardPanels
+	for _, key := range strings.Split(value, ",") {
+		switch key {
+		case "summary":
+			panels.Summary = true
+		case "executions":
+			panels.Executions = true
+		case "rows":
+			panels.Rows = true
+		case "uptime":
+			panels.Uptime = true
+		case "recent":
+			panels.Recent = true
+		}
+	}
+	return panels, nil
+}
+
+func dashboardPanelsFromForm(r *http.Request) dashboardPanels {
+	var panels dashboardPanels
+	for _, key := range r.Form["dashboard_panel"] {
+		switch key {
+		case "summary":
+			panels.Summary = true
+		case "executions":
+			panels.Executions = true
+		case "rows":
+			panels.Rows = true
+		case "uptime":
+			panels.Uptime = true
+		case "recent":
+			panels.Recent = true
+		}
+	}
+	return panels
+}
+
+func (p dashboardPanels) value() string {
+	keys := make([]string, 0, 5)
+	if p.Summary {
+		keys = append(keys, "summary")
+	}
+	if p.Executions {
+		keys = append(keys, "executions")
+	}
+	if p.Rows {
+		keys = append(keys, "rows")
+	}
+	if p.Uptime {
+		keys = append(keys, "uptime")
+	}
+	if p.Recent {
+		keys = append(keys, "recent")
+	}
+	return strings.Join(keys, ",")
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
+	panels, err := s.dashboardPanels()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	iv := s.mon.Interval()
 	s.page(w, r, "settings.html", "Settings", http.StatusOK, settingsData{
 		IntervalMinutes: strconv.FormatInt(int64(iv/time.Minute), 10),
+		Dashboard:       panels,
 	})
 }
 
@@ -31,6 +118,10 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	minutes, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("interval_minutes")), 10, 64)
 	if err != nil || minutes < 0 || minutes > 7*24*60 {
 		s.redirectTo(w, r, "/settings", "", "Interval must be a whole number of minutes between 0 and 10080.")
+		return
+	}
+	if err := s.db.SetSetting(db.SettingDashboardPanels, dashboardPanelsFromForm(r).value()); err != nil {
+		s.redirectTo(w, r, "/settings", "", "Could not save dashboard settings: "+err.Error())
 		return
 	}
 	if err := s.mon.SetInterval(time.Duration(minutes) * time.Minute); err != nil {

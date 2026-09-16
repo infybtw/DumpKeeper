@@ -133,6 +133,20 @@ func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) erro
 	if err != nil {
 		return e.finishFailed(id, fmt.Sprintf("stat dump: %v", err))
 	}
+	rowCount := int64(0)
+	if dump, err := os.Open(tmpPath); err != nil {
+		slog.Warn("backup: open dump metrics", "backup", id, "err", err)
+	} else {
+		metrics, measureErr := MeasureDump(dump)
+		dump.Close()
+		if measureErr != nil {
+			slog.Warn("backup: measure dump", "backup", id, "err", measureErr)
+		} else {
+			for _, table := range metrics.Tables {
+				rowCount += table.LineCount
+			}
+		}
+	}
 
 	var warns []string
 	storedLocal := false
@@ -170,7 +184,7 @@ func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) erro
 
 	finished := db.Now()
 	if err := e.DB.UpdateBackup(db.Backup{
-		ID: id, Status: status, FinishedAt: &finished, SizeBytes: info.Size(),
+		ID: id, Status: status, FinishedAt: &finished, SizeBytes: info.Size(), RowCount: rowCount,
 		StoredLocal: storedLocal, Error: errMsg,
 		S3UploadMS: time.Since(s3UploadStarted).Milliseconds(),
 	}); err != nil {
