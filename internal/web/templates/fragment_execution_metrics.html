@@ -5,11 +5,11 @@
 {{else if .Data.TableCount}}
 <div class="metric-summary">
   <span class="metric-num">{{.Data.TableCount}}</span>
-  <span class="metric-label">table{{if gt .Data.TableCount 1}}s{{end}} with COPY data</span>
+  <span class="metric-label">table{{if gt .Data.TableCount 1}}s{{end}} with data</span>
 </div>
 <table>
   <thead>
-    <tr><th>Table</th><th>Lines</th></tr>
+    <tr><th>Table</th><th>Rows</th></tr>
   </thead>
   <tbody>
     {{range .Data.Tables}}
@@ -18,7 +18,7 @@
   </tbody>
 </table>
 {{else}}
-<p class="hint">No COPY table data found.</p>
+<p class="hint">No table data found.</p>
 {{end}}
 <div class="modal-actions">
   <button class="btn" type="button" data-modal-close>Close</button>

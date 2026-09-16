@@ -22,7 +22,7 @@ func TestMeasureDumpCountsLinesPerTableInFirstSeenOrder(t *testing.T) {
 		`COPY public.orders (id, note) FROM stdin;`,
 		"3\tthird",
 		`\.`,
-		`INSERT INTO public.orders VALUES (4, 'plain SQL is not COPY data');`,
+		`INSERT INTO public.orders VALUES (4, 'INSERT data');`,
 		"",
 	}, "\n")
 
@@ -31,7 +31,7 @@ func TestMeasureDumpCountsLinesPerTableInFirstSeenOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []TableMetric{
-		{Name: "public.orders", LineCount: 3}, // repeated blocks accumulate
+		{Name: "public.orders", LineCount: 4}, // COPY blocks and INSERTs accumulate
 		{Name: "audit.trail", LineCount: 1},
 	}
 	if m.TableCount != len(want) || len(m.Tables) != len(want) {
@@ -77,12 +77,33 @@ func TestMeasureDumpHandlesQuotedTableTargets(t *testing.T) {
 	}
 }
 
-func TestMeasureDumpWithoutCopyData(t *testing.T) {
+func TestMeasureDumpCountsInsertData(t *testing.T) {
+	dump := strings.Join([]string{
+		`INSERT INTO public.t VALUES (1);`,
+		`INSERT INTO "odd schema"."name space" VALUES (2);`,
+		`INSERT INTO public.t VALUES (3);`,
+		"",
+	}, "\n")
+	m, err := MeasureDump(strings.NewReader(dump))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []TableMetric{{Name: "public.t", LineCount: 2}, {Name: "odd schema.name space", LineCount: 1}}
+	if m.TableCount != len(want) || len(m.Tables) != len(want) {
+		t.Fatalf("metrics = %+v, want %d tables", m, len(want))
+	}
+	for i, w := range want {
+		if m.Tables[i] != w {
+			t.Errorf("tables[%d] = %+v, want %+v", i, m.Tables[i], w)
+		}
+	}
+}
+
+func TestMeasureDumpWithoutTableData(t *testing.T) {
 	for name, dump := range map[string]string{
-		"empty":            "",
-		"comments only":    "-- PostgreSQL database dump\n\n",
-		"insert-only dump": "-- dump\nINSERT INTO public.t VALUES (1);\nINSERT INTO public.t VALUES (2);\n",
-		"copy to stdout":   "COPY (SELECT 1) TO STDOUT;\n",
+		"empty":          "",
+		"comments only":  "-- PostgreSQL database dump\n\n",
+		"copy to stdout": "COPY (SELECT 1) TO STDOUT;\n",
 	} {
 		m, err := MeasureDump(strings.NewReader(dump))
 		if err != nil {

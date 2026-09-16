@@ -8,26 +8,25 @@ import (
 	"strings"
 )
 
-// TableMetric is the physical COPY data-line count for one table in a
-// plain-text dump. LineCount is the literal line unit: because COPY encodes
-// embedded newlines, each data line is one exported row.
+// TableMetric is the exported row count for one table in a plain-text dump.
+// pg_dump emits one COPY data line or one INSERT statement per exported row.
 type TableMetric struct {
 	Name      string
 	LineCount int64
 }
 
-// DumpMetrics summarizes the COPY blocks of a plain-text pg_dump file.
-// Tables preserves first-seen order; repeated COPY blocks for one table
-// accumulate into that table's single entry.
+// DumpMetrics summarizes the table data of a plain-text pg_dump file.
+// Tables preserves first-seen order; repeated COPY blocks and INSERT
+// statements for one table accumulate into that table's single entry.
 type DumpMetrics struct {
 	TableCount int
 	Tables     []TableMetric
 }
 
-// MeasureDump streams a plain-text SQL dump and counts, per table, the
-// physical data lines of every `COPY <table> (<columns>) FROM stdin;` block
-// (the terminating `\.` line is not data). A dump without COPY blocks —
-// schema-only dumps, custom formats, plain SQL — measures as zero tables.
+// MeasureDump streams a plain-text SQL dump and counts, per table, exported
+// rows from `COPY <table> (<columns>) FROM stdin;` blocks (excluding `\.`)
+// and pg_dump `INSERT INTO <table> VALUES (...)` statements. A dump without
+// table data — schema-only dumps or custom formats — measures as zero tables.
 // Truncated or unreadable input returns an error instead of a wrong count.
 // The reader is consumed to EOF and never closed.
 func MeasureDump(r io.Reader) (DumpMetrics, error) {
@@ -37,6 +36,15 @@ func MeasureDump(r io.Reader) (DumpMetrics, error) {
 	index := make(map[string]int) // table name -> position in Tables
 	inCopy := false
 	var current *TableMetric
+	addRow := func(name string) {
+		if i, seen := index[name]; seen {
+			metrics.Tables[i].LineCount++
+			return
+		}
+		index[name] = len(metrics.Tables)
+		metrics.Tables = append(metrics.Tables, TableMetric{Name: name, LineCount: 1})
+		metrics.TableCount = len(metrics.Tables)
+	}
 	for {
 		line, rerr := reader.ReadString('\n')
 		trimmed := strings.TrimRight(line, "\r\n")
@@ -59,6 +67,8 @@ func MeasureDump(r io.Reader) (DumpMetrics, error) {
 				metrics.TableCount = len(metrics.Tables)
 			}
 			inCopy = true
+		} else if name, ok := insertTable(trimmed); ok {
+			addRow(name)
 		}
 		if rerr != nil {
 			if !errors.Is(rerr, io.EOF) {
@@ -71,6 +81,30 @@ func MeasureDump(r io.Reader) (DumpMetrics, error) {
 		return DumpMetrics{}, fmt.Errorf("dump: COPY block for table %q is not terminated", current.Name)
 	}
 	return metrics, nil
+}
+
+// insertTable extracts the target table from a pg_dump --inserts statement,
+// e.g. `INSERT INTO public.orders VALUES (1);` -> `public.orders`.
+func insertTable(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "INSERT INTO ")
+	if !ok {
+		return "", false
+	}
+	quoted := false
+	for i := 0; i+8 <= len(rest); i++ {
+		if rest[i] == '"' {
+			quoted = !quoted
+			continue
+		}
+		if !quoted && rest[i:i+8] == " VALUES " {
+			target := rest[:i]
+			if end := tableTargetEnd(target); end > 0 {
+				target = target[:end]
+			}
+			return unquoteTable(target), target != ""
+		}
+	}
+	return "", false
 }
 
 // copyTable extracts the display name from a plain-text COPY header, e.g.

@@ -84,19 +84,15 @@ func (e *metricsEnv) get(t *testing.T, path string) *httptest.ResponseRecorder {
 	return w
 }
 
-func TestExecutionMetricsModalCountsCopyTables(t *testing.T) {
+func TestExecutionMetricsModalCountsInsertTables(t *testing.T) {
 	e := newMetricsEnv(t)
 	dump := strings.Join([]string{
 		"-- PostgreSQL database dump",
-		`COPY public.metric_lines_a (id) FROM stdin;`,
-		"1",
-		"2",
-		`\.`,
-		`COPY public.metric_lines_b (id) FROM stdin;`,
-		"1",
-		"2",
-		"3",
-		`\.`,
+		`INSERT INTO public.metric_lines_a VALUES (1);`,
+		`INSERT INTO public.metric_lines_a VALUES (2);`,
+		`INSERT INTO public.metric_lines_b VALUES (1);`,
+		`INSERT INTO public.metric_lines_b VALUES (2);`,
+		`INSERT INTO public.metric_lines_b VALUES (3);`,
 		"",
 	}, "\n")
 	id := e.saveExecution(t, "metrics.sql", dump)
@@ -109,7 +105,7 @@ func TestExecutionMetricsModalCountsCopyTables(t *testing.T) {
 	for _, want := range []string{
 		"Backup metrics · 2 tables",
 		`<span class="metric-num">2</span>`,
-		`<span class="metric-label">tables with COPY data</span>`,
+		`<span class="metric-label">tables with data</span>`,
 		"<td>public.metric_lines_a</td>",
 		"<td>2</td>",
 		"<td>public.metric_lines_b</td>",
@@ -120,14 +116,14 @@ func TestExecutionMetricsModalCountsCopyTables(t *testing.T) {
 			t.Errorf("metrics modal missing %q:\n%s", want, body)
 		}
 	}
-	for _, unwanted := range []string{"unavailable", "No COPY"} {
+	for _, unwanted := range []string{"unavailable", "No table data"} {
 		if strings.Contains(body, unwanted) {
 			t.Errorf("metrics modal must not contain %q:\n%s", unwanted, body)
 		}
 	}
 }
 
-func TestExecutionMetricsModalWithoutCopyData(t *testing.T) {
+func TestExecutionMetricsModalWithoutTableData(t *testing.T) {
 	e := newMetricsEnv(t)
 	id := e.saveExecution(t, "schema-only.sql",
 		"-- PostgreSQL database dump\n\nSET statement_timeout = 0;\n")
@@ -137,7 +133,7 @@ func TestExecutionMetricsModalWithoutCopyData(t *testing.T) {
 		t.Fatalf("metrics status = %d, body = %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "No COPY table data found.") {
+	if !strings.Contains(body, "No table data found.") {
 		t.Errorf("schema-only modal missing empty-data state:\n%s", body)
 	}
 	if strings.Contains(body, "unavailable") {
