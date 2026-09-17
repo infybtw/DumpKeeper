@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"dumpkeeper/internal/backup"
@@ -242,7 +243,35 @@ func (s *Server) executionMetrics(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := executionMetricsData{}
+	data := executionMetricsData{
+		BackupDuration:   backupElapsed(b),
+		BackupSize:       humanSize(b.SizeBytes),
+		S3UploadDuration: "Not uploaded",
+		Status:           b.Status,
+	}
+	var storedOn []string
+	if b.StoredLocal {
+		storedOn = append(storedOn, "Local")
+	}
+	if dests, err := s.db.BackupDestinations(b.ID); err != nil {
+		slog.Warn("list backup destinations for metrics", "backup", b.ID, "err", err)
+	} else {
+		for _, d := range dests {
+			storedOn = append(storedOn, d.Name)
+		}
+		if len(dests) > 0 {
+			if b.S3UploadMS > 0 {
+				data.S3UploadDuration = humanDuration(time.Duration(b.S3UploadMS) * time.Millisecond)
+			} else {
+				data.S3UploadDuration = "Not recorded"
+			}
+		}
+	}
+	if len(storedOn) > 0 {
+		data.StoredIn = strings.Join(storedOn, ", ")
+	} else {
+		data.StoredIn = "Not stored"
+	}
 	rc, _, err := s.openBackupFile(r.Context(), b)
 	if err != nil {
 		slog.Warn("open backup for metrics", "backup", b.ID, "file", b.Filename, "err", err)
@@ -266,9 +295,29 @@ func (s *Server) executionMetrics(w http.ResponseWriter, r *http.Request) {
 
 // executionMetricsData is the metrics modal fragment context.
 type executionMetricsData struct {
-	Unavailable bool // file missing, unreadable, or structurally malformed
-	TotalRows   int64
+	Unavailable      bool // file missing, unreadable, or structurally malformed
+	TotalRows        int64
+	BackupDuration   string
+	BackupSize       string
+	S3UploadDuration string
+	StoredIn         string
+	Status           string
 	backup.DumpMetrics
+}
+
+func backupElapsed(b db.Backup) string {
+	if b.FinishedAt == nil {
+		return "Running"
+	}
+	started, err := db.ParseTime(b.StartedAt)
+	if err != nil {
+		return "Not recorded"
+	}
+	finished, err := db.ParseTime(*b.FinishedAt)
+	if err != nil {
+		return "Not recorded"
+	}
+	return humanDuration(finished.Sub(started))
 }
 
 // deleteBackupFiles removes a backup's local copy and every stored S3

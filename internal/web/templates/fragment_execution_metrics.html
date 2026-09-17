@@ -12,6 +12,11 @@
     <dl class="metric-details">
       <div><dt>Total rows</dt><dd>{{.Data.TotalRows}}</dd></div>
       <div><dt>Tables</dt><dd>{{.Data.TableCount}}</dd></div>
+      <div><dt>Backup duration</dt><dd>{{.Data.BackupDuration}}</dd></div>
+      <div><dt>Backup size</dt><dd>{{.Data.BackupSize}}</dd></div>
+      <div><dt>S3 upload</dt><dd>{{.Data.S3UploadDuration}}</dd></div>
+      <div><dt>Stored in</dt><dd>{{.Data.StoredIn}}</dd></div>
+      <div><dt>Status</dt><dd>{{.Data.Status}}</dd></div>
     </dl>
     {{else}}
     <p class="hint">No table data found.</p>
