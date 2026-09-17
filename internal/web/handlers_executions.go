@@ -255,6 +255,9 @@ func (s *Server) executionMetrics(w http.ResponseWriter, r *http.Request) {
 			data.Unavailable = true
 		} else {
 			data.DumpMetrics = m
+			for _, table := range m.Tables {
+				data.TotalRows += table.LineCount
+			}
 		}
 	}
 	s.renderModal(w, http.StatusOK, "fragment_execution_metrics.html", "execution-metrics-modal",
@@ -264,6 +267,7 @@ func (s *Server) executionMetrics(w http.ResponseWriter, r *http.Request) {
 // executionMetricsData is the metrics modal fragment context.
 type executionMetricsData struct {
 	Unavailable bool // file missing, unreadable, or structurally malformed
+	TotalRows   int64
 	backup.DumpMetrics
 }
 

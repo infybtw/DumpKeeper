@@ -1,26 +1,42 @@
 {{define "execution-metrics-modal"}}
-<h2 class="modal-title">Backup metrics{{if and (not .Data.Unavailable) .Data.TableCount}} · {{.Data.TableCount}} table{{if gt .Data.TableCount 1}}s{{end}}{{end}}</h2>
-{{if .Data.Unavailable}}
-<p class="hint">Metrics are unavailable for this backup.</p>
-{{else if .Data.TableCount}}
-<div class="metric-summary">
-  <span class="metric-num">{{.Data.TableCount}}</span>
-  <span class="metric-label">table{{if gt .Data.TableCount 1}}s{{end}} with data</span>
-</div>
-<table>
-  <thead>
-    <tr><th>Table</th><th>Rows</th></tr>
-  </thead>
-  <tbody>
-    {{range .Data.Tables}}
-    <tr><td>{{.Name}}</td><td>{{.LineCount}}</td></tr>
+<div class="execution-metrics-layout">
+  <section class="execution-metrics-overview">
+    <h2 class="modal-title">Backup metrics{{if and (not .Data.Unavailable) .Data.TableCount}} · {{.Data.TableCount}} table{{if gt .Data.TableCount 1}}s{{end}}{{end}}</h2>
+    {{if .Data.Unavailable}}
+    <p class="hint">Metrics are unavailable for this backup.</p>
+    {{else if .Data.TableCount}}
+    <div class="metric-summary">
+      <span class="metric-num">{{.Data.TableCount}}</span>
+      <span class="metric-label">table{{if gt .Data.TableCount 1}}s{{end}} with data</span>
+    </div>
+    <dl class="metric-details">
+      <div><dt>Total rows</dt><dd>{{.Data.TotalRows}}</dd></div>
+      <div><dt>Tables</dt><dd>{{.Data.TableCount}}</dd></div>
+    </dl>
+    {{else}}
+    <p class="hint">No table data found.</p>
     {{end}}
-  </tbody>
-</table>
-{{else}}
-<p class="hint">No table data found.</p>
-{{end}}
-<div class="modal-actions">
-  <button class="btn" type="button" data-modal-close>Close</button>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-modal-close>Close</button>
+    </div>
+  </section>
+
+  {{if and (not .Data.Unavailable) .Data.TableCount}}
+  <section class="execution-metrics-tables" aria-label="Table metrics">
+    <h3>Tables</h3>
+    <div class="execution-metrics-table-scroll">
+      <table>
+        <thead>
+          <tr><th>Table</th><th>Rows</th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Tables}}
+          <tr><td>{{.Name}}</td><td>{{.LineCount}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
 </div>
 {{end}}
