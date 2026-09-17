@@ -54,7 +54,7 @@ func TestDatabasePingUpdatesAvailability(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("ping status = %d, body = %s", w.Code, w.Body.String())
 		}
-		data, err := s.dashboardData()
+		data, err := s.dashboardData(dashboardPeriodFor(""))
 		if err != nil {
 			t.Fatal(err)
 		}

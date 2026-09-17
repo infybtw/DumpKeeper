@@ -8,6 +8,15 @@
     <input type="number" name="interval_minutes" min="0" max="10080" step="1" value="{{.Data.IntervalMinutes}}">
     <span class="hint">How often every database is probed with <code>psql SELECT 1</code>; failures are recorded as downtime periods on the <a href="{{u "/availability"}}">Availability</a> page. 0 disables monitoring.</span>
   </label>
+  <fieldset class="dashboard-settings">
+    <legend>Dashboard panels</legend>
+    <span class="hint">Choose the panels shown on the Dashboard. This does not delete any history or metrics.</span>
+    <label class="check"><input type="checkbox" name="dashboard_panel" value="summary" {{if .Data.Dashboard.Summary}}checked{{end}}>Summary cards</label>
+    <label class="check"><input type="checkbox" name="dashboard_panel" value="executions" {{if .Data.Dashboard.Executions}}checked{{end}}>Backup execution trend</label>
+    <label class="check"><input type="checkbox" name="dashboard_panel" value="rows" {{if .Data.Dashboard.Rows}}checked{{end}}>Database row trends</label>
+    <label class="check"><input type="checkbox" name="dashboard_panel" value="uptime" {{if .Data.Dashboard.Uptime}}checked{{end}}>Database uptime</label>
+    <label class="check"><input type="checkbox" name="dashboard_panel" value="recent" {{if .Data.Dashboard.Recent}}checked{{end}}>Recent executions</label>
+  </fieldset>
   <div>
     <button class="btn btn-primary" type="submit">Save</button>
   </div>

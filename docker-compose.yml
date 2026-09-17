@@ -19,6 +19,8 @@
 services:
   postgres:
     image: postgres:17-alpine
+    networks:
+      - backend
     environment:
       POSTGRES_PASSWORD: pgpass
     ports:
@@ -33,6 +35,8 @@ services:
 
   dumpkeeper:
     build: .
+    networks:
+      - backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,3 +53,7 @@ volumes:
   pgdata:
   miniodata:
   dkdata:
+
+networks:
+  backend:
+    driver: bridge

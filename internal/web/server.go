@@ -27,7 +27,7 @@ var files embed.FS
 // Versioned URLs may be cached indefinitely without serving stale UI styles or scripts.
 var staticAssetVersions = func() map[string]string {
 	const assetDir = "static/"
-	names := []string{"app.css", "htmx.min.js"}
+	names := []string{"app.css", "dashboard.js", "htmx.min.js"}
 	versions := make(map[string]string, len(names))
 	for _, name := range names {
 		content, err := files.ReadFile(assetDir + name)

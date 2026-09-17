@@ -1,5 +1,5 @@
 {{define "dashboard-content"}}
-<div class="cards">
+{{if .Panels.Summary}}<div class="cards">
   {{range .Cards}}
   <div class="card">
     <div class="card-title">{{.Total}} {{.Title}}</div>
@@ -14,10 +14,43 @@
     <div class="legend">
       {{range .Legend}}<span class="legend-item"><span class="dot dot-{{.Class}}"></span>{{.Label}} {{.Value}}</span>{{end}}
     </div>
+    {{if and .Segments .Note}}<div class="card-note">{{.Note}}</div>{{end}}
   </div>
   {{end}}
 </div>
-<h2>Database uptime (24h)</h2>
+{{end}}
+{{if .Panels.Executions}}<section class="dashboard-chart" aria-labelledby="execution-chart-title">
+  <div class="chart-head">
+    <div><p class="chart-kicker">Activity</p><h2 id="execution-chart-title">Backup execution trend</h2></div>
+    <div class="chart-legend"><span><i class="chart-dot chart-dot-ok"></i>Completed</span><span><i class="chart-dot chart-dot-err"></i>Failed</span></div>
+  </div>
+  <div class="chart-wrap">
+    <svg class="execution-chart" viewBox="0 0 430 210" role="img" aria-label="Completed and failed backup executions over the last {{.PeriodLabel}}">
+      <line class="chart-axis" style="stroke:var(--chart-axis)" x1="54" y1="170" x2="414" y2="170"/><line class="chart-axis" style="stroke:var(--chart-axis)" x1="54" y1="38" x2="54" y2="170"/>
+      {{range .ChartYTicks}}{{if .Grid}}<line class="chart-grid" style="stroke:var(--chart-grid)" x1="54" y1="{{.Pos}}" x2="414" y2="{{.Pos}}"/>{{end}}<text class="chart-tick" style="fill:var(--muted)" x="48" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+      <path class="chart-line chart-line-ok" style="fill:none;stroke:var(--ok)" d="{{.CompletedPath}}"/><path class="chart-line chart-line-err" style="fill:none;stroke:var(--err)" d="{{.FailedPath}}"/>
+      {{range .Chart}}<circle class="chart-point chart-point-ok" style="fill:var(--ok)" cx="{{.X}}" cy="{{.CompletedY}}" r="3.8" tabindex="0" data-tooltip="{{.Label}}: {{.Completed}} completed, {{.Failed}} failed" aria-label="{{.Label}}: {{.Completed}} completed, {{.Failed}} failed"/><circle class="chart-point chart-point-err" style="fill:var(--err)" cx="{{.X}}" cy="{{.FailedY}}" r="3.8" tabindex="0" data-tooltip="{{.Label}}: {{.Completed}} completed, {{.Failed}} failed" aria-label="{{.Label}}: {{.Completed}} completed, {{.Failed}} failed"/>{{end}}
+      {{range .ChartXTicks}}<text class="chart-label" style="fill:var(--muted)" x="{{.Pos}}" y="193" text-anchor="middle">{{.Label}}</text>{{end}}
+    </svg>
+  </div>
+</section>
+{{end}}
+{{if .Panels.Rows}}{{range .DatabaseTrends}}<section class="dashboard-chart" aria-label="Row count trend for {{.Name}}">
+  <div class="chart-head">
+    <div><p class="chart-kicker">Database row trend</p><h2>{{.Name}}</h2></div>
+    <span class="chart-note">Completed backups in the selected period</span>
+  </div>
+  <div class="chart-wrap">
+    {{if .HasData}}<svg class="execution-chart" viewBox="0 0 430 210" role="img" aria-label="Row count trend for {{.Name}}">
+      <line class="chart-axis" style="stroke:var(--chart-axis)" x1="54" y1="170" x2="414" y2="170"/><line class="chart-axis" style="stroke:var(--chart-axis)" x1="54" y1="38" x2="54" y2="170"/>
+      {{range .YTicks}}{{if .Grid}}<line class="chart-grid" style="stroke:var(--chart-grid)" x1="54" y1="{{.Pos}}" x2="414" y2="{{.Pos}}"/>{{end}}<text class="chart-tick" style="fill:var(--muted)" x="48" y="{{.Pos}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>{{end}}
+      <path class="chart-line chart-line-rows" style="fill:none;stroke:var(--chart-rows)" d="{{.Path}}"/>
+      {{range .Points}}<circle class="chart-point chart-point-rows" style="fill:var(--chart-rows-point)" cx="{{.X}}" cy="{{.Y}}" r="4" tabindex="0" data-tooltip="{{.Label}}: {{.Value}} rows" aria-label="{{.Label}}: {{.Value}} rows"/>{{end}}
+      {{range .XTicks}}<text class="chart-label" style="fill:var(--muted)" x="{{.Pos}}" y="193" text-anchor="middle">{{.Label}}</text>{{end}}
+    </svg>{{else}}<p class="chart-empty">No row metrics in this period. Run a new backup to start the trend.</p>{{end}}
+  </div>
+ </section>{{end}}{{end}}
+{{if .Panels.Uptime}}<h2>Database uptime ({{.PeriodLabel}})</h2>
 <table>
   <thead>
     <tr><th>Database</th><th>Status</th><th>Uptime</th><th>Last check</th><th>Latency</th></tr>
@@ -36,7 +69,8 @@
     {{end}}
   </tbody>
 </table>
-<h2>Recent executions</h2>
+{{end}}
+{{if .Panels.Recent}}<h2>Recent executions</h2>
 <table>
   <thead>
     <tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Trigger</th></tr>
@@ -55,4 +89,5 @@
     {{end}}
   </tbody>
 </table>
+{{end}}
 {{end}}

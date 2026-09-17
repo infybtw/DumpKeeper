@@ -1,15 +1,29 @@
 package web
 
 import (
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"dumpkeeper/internal/db"
 )
 
-// uptimeWindow is the period the per-database uptime percentage covers.
-const uptimeWindow = 24 * time.Hour
+type dashboardPeriod struct {
+	Key   string
+	Label string
+	Span  time.Duration
+}
+
+var dashboardPeriods = []dashboardPeriod{
+	{Key: "12h", Label: "12 hours", Span: 12 * time.Hour},
+	{Key: "24h", Label: "24 hours", Span: 24 * time.Hour},
+	{Key: "7d", Label: "7 days", Span: 7 * 24 * time.Hour},
+	{Key: "30d", Label: "30 days", Span: 30 * 24 * time.Hour},
+	{Key: "90d", Label: "90 days", Span: 90 * 24 * time.Hour},
+}
 
 // dashSegment is one slice of a dashboard donut. The ring has a 100-unit
 // circumference (r=15.9155 in a 42-unit viewBox), so percentages are used
@@ -57,15 +71,61 @@ type recentExec struct {
 	Trigger  string
 }
 
+// executionChartPoint is one time bucket in the execution history chart.
+type executionChartPoint struct {
+	Label      string
+	X          float64
+	CompletedY float64
+	FailedY    float64
+	Completed  int64
+	Failed     int64
+}
+
+// chartTick is one labelled position on a chart axis. Grid marks the value
+// lines that draw a horizontal gridline (the zero baseline is drawn as the
+// axis instead).
+type chartTick struct {
+	Label string
+	Pos   float64
+	Grid  bool
+}
+
+// databaseTrendPoint is one backup metric in a database's history.
+type databaseTrendPoint struct {
+	Label string
+	X     float64
+	Y     float64
+	Value int64
+}
+
+type databaseTrendChart struct {
+	Name    string
+	Points  []databaseTrendPoint
+	Path    string
+	YTicks  []chartTick
+	XTicks  []chartTick
+	HasData bool
+}
+
 // dashboardData backs the dashboard page and its poll fragment.
 type dashboardData struct {
-	Cards  []dashCard
-	Uptime []uptimeRow
-	Recent []recentExec
+	Panels         dashboardPanels
+	Cards          []dashCard
+	Uptime         []uptimeRow
+	Recent         []recentExec
+	Period         string
+	PeriodLabel    string
+	Periods        []dashboardPeriod
+	Chart          []executionChartPoint
+	ChartYTicks    []chartTick
+	ChartXTicks    []chartTick
+	CompletedPath  string
+	FailedPath     string
+	DatabaseTrends []databaseTrendChart
 }
 
 func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
-	data, err := s.dashboardData()
+	data, err := s.dashboardData(dashboardPeriodFor(r.URL.Query().Get("period")))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -74,7 +134,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
-	data, err := s.dashboardData()
+	data, err := s.dashboardData(dashboardPeriodFor(r.URL.Query().Get("period")))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -82,9 +142,12 @@ func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "fragment_dashboard.html", "dashboard-content", data)
 }
 
-// dashboardData gathers everything the summary page shows: donut cards,
-// per-database uptime over the last 24h, and the latest executions.
-func (s *Server) dashboardData() (dashboardData, error) {
+// dashboardData gathers everything the summary page shows for period.
+func (s *Server) dashboardData(period dashboardPeriod) (dashboardData, error) {
+	panels, err := s.dashboardPanels()
+	if err != nil {
+		return dashboardData{}, err
+	}
 	dbs, err := s.db.ListDatabases()
 	if err != nil {
 		return dashboardData{}, err
@@ -94,10 +157,6 @@ func (s *Server) dashboardData() (dashboardData, error) {
 		return dashboardData{}, err
 	}
 	jobs, err := s.db.ListJobs()
-	if err != nil {
-		return dashboardData{}, err
-	}
-	counts, err := s.db.CountBackupsByStatus()
 	if err != nil {
 		return dashboardData{}, err
 	}
@@ -148,11 +207,13 @@ func (s *Server) dashboardData() (dashboardData, error) {
 		Legend:   []dashLegend{{"scheduled", scheduled, "ok"}, {"manual only", manual, "warn"}},
 	}
 
-	// Executions card: all-time status split.
-	completed, failed, running := counts["completed"], counts["failed"], counts["running"]
-	deleted := counts["deleted"]
+	// Executions card: selected-period status split.
+	periodBackups := backupsSince(backups, time.Now().Add(-period.Span))
+	periodCounts := backupStatusCounts(periodBackups)
+	completed, failed, running := periodCounts["completed"], periodCounts["failed"], periodCounts["running"]
+	deleted := periodCounts["deleted"]
 	execCard := dashCard{
-		Title: "Executions", Total: completed + failed + running + deleted,
+		Title: "Executions", Total: completed + failed + running + deleted, Note: "Last " + period.Label,
 		Segments: donutSegments([]dashPart{{completed, "ok"}, {failed, "err"}, {running, "warn"}, {deleted, "muted"}}),
 		Legend:   []dashLegend{{"completed", completed, "ok"}, {"failed", failed, "err"}, {"running", running, "warn"}, {"deleted", deleted, "muted"}},
 	}
@@ -166,11 +227,275 @@ func (s *Server) dashboardData() (dashboardData, error) {
 		restCard.Note = "Last: unknown"
 	}
 
+	chart, completedPath, failedPath := executionChart(periodBackups, period)
+	rowCharts := databaseRowTrends(dbs, jobs, periodBackups, period)
+	var chartMax int64 = 1
+	for _, point := range chart {
+		if total := point.Completed + point.Failed; total > chartMax {
+			chartMax = total
+		}
+	}
 	return dashboardData{
-		Cards:  []dashCard{dbCard, jobsCard, execCard, restCard},
-		Uptime: s.uptimeRows(dbs, states, incidents),
-		Recent: recentExecs(backups, jobs),
+		Panels:         panels,
+		Cards:          []dashCard{dbCard, jobsCard, execCard, restCard},
+		Uptime:         s.uptimeRows(dbs, states, incidents, period.Span),
+		Recent:         recentExecs(backups, jobs),
+		Period:         period.Key,
+		PeriodLabel:    period.Label,
+		Periods:        dashboardPeriods,
+		Chart:          chart,
+		ChartYTicks:    yAxisTicks(chartMax),
+		ChartXTicks:    xAxisTicks(chart),
+		CompletedPath:  completedPath,
+		FailedPath:     failedPath,
+		DatabaseTrends: rowCharts,
 	}, nil
+}
+
+// yAxisTicks labels the horizontal grid lines plus the zero baseline. Small
+// maxima use one line per value so counts stay whole numbers; larger maxima
+// fall back to four evenly spaced lines.
+func yAxisTicks(max int64) []chartTick {
+	if max < 1 {
+		max = 1
+	}
+	const top, bottom = 38.0, 170.0
+	steps := 4
+	if max <= 4 {
+		steps = int(max)
+	}
+	ticks := make([]chartTick, 0, steps+1)
+	for i := 0; i <= steps; i++ {
+		value := float64(max) * (1 - float64(i)/float64(steps))
+		ticks = append(ticks, chartTick{
+			Label: formatAxisValue(value),
+			Pos:   top + (bottom-top)*float64(i)/float64(steps),
+			Grid:  i < steps,
+		})
+	}
+	return ticks
+}
+
+// xAxisTicks picks evenly spaced time labels along the X axis.
+func xAxisTicks(points []executionChartPoint) []chartTick {
+	if len(points) == 0 {
+		return nil
+	}
+	const count = 5
+	ticks := make([]chartTick, 0, count)
+	for i := 0; i < count; i++ {
+		index := int(math.Round(float64(i) * float64(len(points)-1) / float64(count-1)))
+		ticks = append(ticks, chartTick{Label: points[index].Label, Pos: points[index].X})
+	}
+	return ticks
+}
+
+// formatAxisValue renders a tick value compactly (1.2k, 3M) so long row totals
+// stay readable in the narrow Y-axis gutter.
+func formatAxisValue(v float64) string {
+	switch abs := math.Abs(v); {
+	case abs >= 1e9:
+		return strconv.FormatFloat(v/1e9, 'g', 3, 64) + "B"
+	case abs >= 1e6:
+		return strconv.FormatFloat(v/1e6, 'g', 3, 64) + "M"
+	case abs >= 1e3:
+		return strconv.FormatFloat(v/1e3, 'g', 3, 64) + "k"
+	case v == math.Trunc(v):
+		return strconv.FormatInt(int64(v), 10)
+	default:
+		return strconv.FormatFloat(v, 'g', 2, 64)
+	}
+}
+
+func dashboardPeriodFor(key string) dashboardPeriod {
+	for _, period := range dashboardPeriods {
+		if period.Key == key {
+			return period
+		}
+	}
+	return dashboardPeriods[3]
+}
+
+func chartBuckets(period dashboardPeriod) (time.Duration, int, string) {
+	if period.Key == "12h" || period.Key == "24h" {
+		return time.Hour, int(period.Span / time.Hour), "15:04"
+	}
+	if period.Key == "90d" {
+		return 7 * 24 * time.Hour, 13, "Jan 2"
+	}
+	return 24 * time.Hour, int(period.Span / (24 * time.Hour)), "Jan 2"
+}
+
+func backupsSince(backups []db.Backup, since time.Time) []db.Backup {
+	filtered := make([]db.Backup, 0, len(backups))
+	for _, b := range backups {
+		if started, err := db.ParseTime(b.StartedAt); err == nil && !started.Before(since) {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered
+}
+
+func backupStatusCounts(backups []db.Backup) map[string]int64 {
+	counts := map[string]int64{}
+	for _, b := range backups {
+		counts[b.Status]++
+	}
+	return counts
+}
+
+// executionChart makes daily buckets for short ranges and weekly buckets for
+// the 90-day view, keeping the chart readable even with a long history.
+func executionChart(backups []db.Backup, period dashboardPeriod) ([]executionChartPoint, string, string) {
+	step, buckets, labelFormat := chartBuckets(period)
+	now := time.Now().Local()
+	start := now.Truncate(step).Add(-time.Duration(buckets-1) * step)
+	completed := make([]int64, buckets)
+	failed := make([]int64, buckets)
+	for _, b := range backups {
+		started, err := db.ParseTime(b.StartedAt)
+		if err != nil {
+			continue
+		}
+		index := int(started.Local().Sub(start) / step)
+		if index < 0 || index >= buckets {
+			continue
+		}
+		if b.Status == db.StatusCompleted {
+			completed[index]++
+		} else if b.Status == db.StatusFailed {
+			failed[index]++
+		}
+	}
+	var max int64 = 1
+	for i := range completed {
+		if total := completed[i] + failed[i]; total > max {
+			max = total
+		}
+	}
+	points := make([]executionChartPoint, buckets)
+	for i := range points {
+		points[i] = executionChartPoint{
+			Label:      start.Add(time.Duration(i) * step).Format(labelFormat),
+			X:          54 + 360*float64(i)/float64(buckets-1),
+			CompletedY: 170 - 132*float64(completed[i])/float64(max),
+			FailedY:    170 - 132*float64(failed[i])/float64(max),
+			Completed:  completed[i],
+			Failed:     failed[i],
+		}
+	}
+	return points, executionPath(points, func(p executionChartPoint) float64 { return p.CompletedY }), executionPath(points, func(p executionChartPoint) float64 { return p.FailedY })
+}
+
+func executionPath(points []executionChartPoint, y func(executionChartPoint) float64) string {
+	var path strings.Builder
+	for i, point := range points {
+		if i == 0 {
+			fmt.Fprintf(&path, "M %.2f %.2f", point.X, y(point))
+		} else {
+			fmt.Fprintf(&path, " L %.2f %.2f", point.X, y(point))
+		}
+	}
+	return path.String()
+}
+
+// databaseRowTrends creates one time series per connected database. Multiple
+// jobs targeting the same database share a series; the latest backup in each
+// time bucket wins, so retries do not distort the trend.
+func databaseRowTrends(dbs []db.Database, jobs []db.Job, backups []db.Backup, period dashboardPeriod) []databaseTrendChart {
+	jobDatabase := make(map[int64]int64, len(jobs))
+	for _, job := range jobs {
+		jobDatabase[job.ID] = job.DatabaseID
+	}
+	step, buckets, labelFormat := chartBuckets(period)
+	now := time.Now().Local()
+	start := now.Truncate(step).Add(-time.Duration(buckets-1) * step)
+	values := make(map[int64][]db.Backup, len(dbs))
+	for _, backup := range backups {
+		databaseID := jobDatabase[backup.JobID]
+		if databaseID == 0 || backup.Status != db.StatusCompleted || backup.RowCount < 0 {
+			continue
+		}
+		started, err := db.ParseTime(backup.StartedAt)
+		if err != nil {
+			continue
+		}
+		index := int(started.Local().Sub(start) / step)
+		if index < 0 || index >= buckets {
+			continue
+		}
+		series := values[databaseID]
+		if len(series) == 0 {
+			series = make([]db.Backup, buckets)
+		}
+		if series[index].StartedAt < backup.StartedAt {
+			series[index] = backup
+		}
+		values[databaseID] = series
+	}
+	charts := make([]databaseTrendChart, 0, len(dbs))
+	for _, database := range dbs {
+		series := values[database.ID]
+		var max int64 = 1
+		for _, backup := range series {
+			if backup.RowCount > max {
+				max = backup.RowCount
+			}
+		}
+		chart := databaseTrendChart{
+			Name:   database.Name,
+			YTicks: yAxisTicks(max),
+			XTicks: bucketXTicks(start, step, buckets, labelFormat),
+		}
+		for i, backup := range series {
+			if backup.StartedAt == "" {
+				continue
+			}
+			chart.HasData = true
+			chart.Points = append(chart.Points, databaseTrendPoint{
+				Label: start.Add(time.Duration(i) * step).Format(labelFormat),
+				X:     54 + 360*float64(i)/float64(maxInt(buckets-1, 1)),
+				Y:     170 - 132*float64(backup.RowCount)/float64(max),
+				Value: backup.RowCount,
+			})
+		}
+		var path strings.Builder
+		for i, point := range chart.Points {
+			if i == 0 {
+				fmt.Fprintf(&path, "M %.2f %.2f", point.X, point.Y)
+			} else {
+				fmt.Fprintf(&path, " L %.2f %.2f", point.X, point.Y)
+			}
+		}
+		chart.Path = path.String()
+		charts = append(charts, chart)
+	}
+	return charts
+}
+
+// bucketXTicks labels evenly spaced buckets along the X axis; unlike
+// xAxisTicks it does not depend on which buckets actually carry data.
+func bucketXTicks(start time.Time, step time.Duration, buckets int, format string) []chartTick {
+	if buckets <= 0 {
+		return nil
+	}
+	const count = 5
+	ticks := make([]chartTick, 0, count)
+	for i := 0; i < count; i++ {
+		index := int(math.Round(float64(i) * float64(buckets-1) / float64(count-1)))
+		ticks = append(ticks, chartTick{
+			Label: start.Add(time.Duration(index) * step).Format(format),
+			Pos:   54 + 360*float64(index)/float64(maxInt(buckets-1, 1)),
+		})
+	}
+	return ticks
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // dashPart is one candidate donut slice before scaling to percentages.
@@ -210,11 +535,11 @@ func donutSegments(parts []dashPart) []dashSegment {
 	return segs
 }
 
-// uptimeRows computes each database's uptime percentage over the last 24h
-// from incident overlap; databases never checked show a dash.
-func (s *Server) uptimeRows(dbs []db.Database, states map[int64]db.PingState, incidents []db.Incident) []uptimeRow {
+// uptimeRows computes each database's uptime percentage over window from
+// incident overlap; databases never checked show a dash.
+func (s *Server) uptimeRows(dbs []db.Database, states map[int64]db.PingState, incidents []db.Incident, window time.Duration) []uptimeRow {
 	now := time.Now()
-	windowStart := now.Add(-uptimeWindow)
+	windowStart := now.Add(-window)
 	byDB := map[int64][]db.Incident{}
 	for _, inc := range incidents {
 		byDB[inc.DatabaseID] = append(byDB[inc.DatabaseID], inc)
