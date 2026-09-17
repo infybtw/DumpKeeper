@@ -141,6 +141,7 @@ func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) erro
 	// S3 first: it only reads the temp file, while Local.Put renames it
 	// away. The other order would make a local+S3 job fail its S3 legs with
 	// "no such file or directory".
+	s3UploadStarted := time.Now()
 	for _, d := range dests {
 		if err := S3Store(d).Put(ctx, filename, tmpPath); err != nil {
 			warns = append(warns, d.Name+": "+err.Error())
@@ -171,6 +172,7 @@ func (e *Engine) RunBackup(ctx context.Context, job db.Job, trigger string) erro
 	if err := e.DB.UpdateBackup(db.Backup{
 		ID: id, Status: status, FinishedAt: &finished, SizeBytes: info.Size(),
 		StoredLocal: storedLocal, Error: errMsg,
+		S3UploadMS: time.Since(s3UploadStarted).Milliseconds(),
 	}); err != nil {
 		slog.Error("backup: update row", "id", id, "err", err)
 	}

@@ -111,3 +111,44 @@ func TestMigrateV3JobEnabled(t *testing.T) {
 		t.Fatalf("update lost enabled: %+v (%v)", j, err)
 	}
 }
+
+func TestMigrateV4BackupUploadDuration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v4.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = old.Exec(`CREATE TABLE backups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER,
+  status TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  started_at TEXT NOT NULL, finished_at TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  filename TEXT NOT NULL,
+  stored_local INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',
+  restored_at TEXT
+); INSERT INTO backups (status, trigger, started_at, filename) VALUES ('completed', 'manual', 't1', 'dump.sql')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open+migrate: %v", err)
+	}
+	defer store.Close()
+	b, err := store.GetBackup(1)
+	if err != nil || b.S3UploadMS != 0 {
+		t.Fatalf("migrated upload duration = %+v (%v)", b, err)
+	}
+	b.S3UploadMS = 1250
+	if err := store.UpdateBackup(b); err != nil {
+		t.Fatal(err)
+	}
+	if b, err = store.GetBackup(1); err != nil || b.S3UploadMS != 1250 {
+		t.Fatalf("upload duration did not persist: %+v (%v)", b, err)
+	}
+}

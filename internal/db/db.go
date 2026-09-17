@@ -94,6 +94,7 @@ type Backup struct {
 	StartedAt   string
 	FinishedAt  *string
 	SizeBytes   int64
+	S3UploadMS  int64
 	Filename    string
 	StoredLocal bool
 	Error       string
@@ -160,7 +161,8 @@ var ddl = []string{
   status TEXT NOT NULL,
   trigger TEXT NOT NULL,
   started_at TEXT NOT NULL, finished_at TEXT,
-  size_bytes INTEGER NOT NULL DEFAULT 0,
+   size_bytes INTEGER NOT NULL DEFAULT 0,
+   s3_upload_ms INTEGER NOT NULL DEFAULT 0,
   filename TEXT NOT NULL,
   stored_local INTEGER NOT NULL DEFAULT 0,
   error TEXT NOT NULL DEFAULT '',
@@ -223,6 +225,10 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
 	if err := s.migrateV3(); err != nil {
+		sq.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	if err := s.migrateV4(); err != nil {
 		sq.Close()
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
@@ -519,6 +525,20 @@ func (s *Store) migrateV3() error {
 	}
 	if _, err := s.sql.Exec(`ALTER TABLE jobs ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`); err != nil {
 		return fmt.Errorf("migrate jobs.enabled: %w", err)
+	}
+	return nil
+}
+
+// migrateV4 records the elapsed wall-clock time spent uploading a backup to
+// its S3 destinations. Existing backups have no historical upload timing and
+// retain the zero value.
+func (s *Store) migrateV4() error {
+	has, err := s.tableHasColumn("backups", "s3_upload_ms")
+	if err != nil || has {
+		return err
+	}
+	if _, err := s.sql.Exec(`ALTER TABLE backups ADD COLUMN s3_upload_ms INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("migrate backups.s3_upload_ms: %w", err)
 	}
 	return nil
 }
@@ -868,14 +888,14 @@ func (s *Store) JobNameExists(name string, excludeID int64) (bool, error) {
 
 // ---- backups (executions) ----
 
-const backupCols = `id, COALESCE(job_id, 0) AS job_id, status, "trigger", started_at, finished_at, size_bytes, filename, stored_local, error, restored_at`
+const backupCols = `id, COALESCE(job_id, 0) AS job_id, status, "trigger", started_at, finished_at, size_bytes, s3_upload_ms, filename, stored_local, error, restored_at`
 
 func scanBackup(row interface{ Scan(dest ...any) error }) (Backup, error) {
 	var b Backup
 	var storedLocal int
 	var finished, restored sql.NullString
 	err := row.Scan(&b.ID, &b.JobID, &b.Status, &b.Trigger, &b.StartedAt, &finished,
-		&b.SizeBytes, &b.Filename, &storedLocal, &b.Error, &restored)
+		&b.SizeBytes, &b.S3UploadMS, &b.Filename, &storedLocal, &b.Error, &restored)
 	b.StoredLocal = storedLocal == 1
 	if finished.Valid {
 		b.FinishedAt = &finished.String
@@ -911,8 +931,8 @@ func (s *Store) UpdateBackup(b Backup) error {
 		restored.String = *b.RestoredAt
 	}
 	_, err := s.sql.Exec(
-		`UPDATE backups SET status=?, finished_at=?, size_bytes=?, stored_local=?, error=?, restored_at=? WHERE id=?`,
-		b.Status, finished, b.SizeBytes, b2i(b.StoredLocal), b.Error, restored, b.ID)
+		`UPDATE backups SET status=?, finished_at=?, size_bytes=?, s3_upload_ms=?, stored_local=?, error=?, restored_at=? WHERE id=?`,
+		b.Status, finished, b.SizeBytes, b.S3UploadMS, b2i(b.StoredLocal), b.Error, restored, b.ID)
 	if err != nil {
 		return fmt.Errorf("update backup %d: %w", b.ID, err)
 	}
