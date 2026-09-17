@@ -292,6 +292,7 @@ dialog.modal {
 dialog.modal::backdrop { background: rgba(15, 23, 42, 0.55); }
 dialog.modal:has(.execution-metrics-layout) {
   width: min(960px, calc(100vw - 2rem));
+  height: min(720px, calc(100dvh - 3rem));
   overflow: hidden;
 }
 .modal-title { margin: 0 0 0.75rem; font-size: 1.15rem; }
@@ -327,7 +328,8 @@ dialog.modal:has(.execution-metrics-layout) {
   display: grid;
   grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
   gap: 1.5rem;
-  max-height: calc(min(720px, 100vh - 3rem) - 2.5rem);
+  height: 100%;
+  min-height: 0;
 }
 .execution-metrics-overview {
   display: flex;
@@ -356,6 +358,7 @@ dialog.modal:has(.execution-metrics-layout) {
 }
 .execution-metrics-tables h3 { margin: 0 0 0.75rem; font-size: 0.9rem; }
 .execution-metrics-table-scroll {
+  flex: 1;
   min-height: 0;
   overflow: auto;
   border: 1px solid var(--border);
@@ -506,7 +509,10 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
     max-height: calc(100dvh - 1rem);
     padding: 1rem;
   }
-  dialog.modal:has(.execution-metrics-layout) { overflow: auto; }
+  dialog.modal:has(.execution-metrics-layout) {
+    height: auto;
+    overflow: auto;
+  }
   .execution-metrics-layout {
     grid-template-columns: 1fr;
     max-height: none;
