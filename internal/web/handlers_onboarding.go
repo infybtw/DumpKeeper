@@ -21,7 +21,7 @@ func (s *Server) onboardingPending() bool {
 
 // onboardingDismiss records that the guide was finished or skipped so it is
 // not shown again automatically. The sidebar Guide button reopens it at any
-// time. Called by fetch when the dialog closes.
+// time. Called by fetch when the tour is finished or skipped.
 func (s *Server) onboardingDismiss(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.SetSetting(db.SettingOnboardingDone, "1"); err != nil {
 		slog.Warn("save onboarding state", "err", err)

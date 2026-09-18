@@ -24,22 +24,22 @@ try {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
   <nav id="primary-navigation">
-    <a href="{{u "/"}}" aria-label="Dashboard" title="Dashboard">
+    <a href="{{u "/"}}" aria-label="Dashboard" title="Dashboard" data-tour="nav-dashboard">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg></span><span class="sidebar-label">Dashboard</span>
     </a>
-    <a href="{{u "/databases"}}" aria-label="Databases" title="Databases">
+    <a href="{{u "/databases"}}" aria-label="Databases" title="Databases" data-tour="nav-databases">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 4 14 4 14 0V5M5 12v7c0 4 14 4 14 0v-7"/></svg></span><span class="sidebar-label">Databases</span>
     </a>
-    <a href="{{u "/destinations"}}" aria-label="Destinations" title="Destinations">
+    <a href="{{u "/destinations"}}" aria-label="Destinations" title="Destinations" data-tour="nav-destinations">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="m3 7 9 4 9-4v10l-9 4-9-4V7Z"/><path d="M12 11v10"/></svg></span><span class="sidebar-label">Destinations</span>
     </a>
-    <a href="{{u "/jobs"}}" aria-label="Jobs" title="Jobs">
+    <a href="{{u "/jobs"}}" aria-label="Jobs" title="Jobs" data-tour="nav-jobs">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h10M9 12h10M9 18h10"/><path d="m4 6 1 1 2-2m-3 7 1 1 2-2m-3 7 1 1 2-2"/></svg></span><span class="sidebar-label">Jobs</span>
     </a>
-    <a href="{{u "/executions"}}" aria-label="Executions" title="Executions">
+    <a href="{{u "/executions"}}" aria-label="Executions" title="Executions" data-tour="nav-executions">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span><span class="sidebar-label">Executions</span>
     </a>
-    <a href="{{u "/restore"}}" aria-label="Restore" title="Restore">
+    <a href="{{u "/restore"}}" aria-label="Restore" title="Restore" data-tour="nav-restore">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4"/></svg></span><span class="sidebar-label">Restore</span>
     </a>
     <a href="{{u "/availability"}}" aria-label="Availability" title="Availability">
@@ -50,7 +50,7 @@ try {
     </a>
   </nav>
   <div class="sidebar-footer">
-    <button class="sidebar-control" type="button" data-open-guide aria-haspopup="dialog">
+    <button class="sidebar-control" type="button" data-open-guide data-tour="guide-button" aria-haspopup="dialog">
       <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 1 1 4 2.5c-.9.5-1.2 1-1.2 1.9"/><path d="M12 17h.01"/></svg></span>
       <span class="sidebar-label">Guide</span>
     </button>
@@ -89,45 +89,22 @@ try {
 </dialog>
 {{end}}
 {{if .CSRF}}
-<dialog id="onboarding" class="modal onboard" data-csrf="{{.CSRF}}" data-dismiss-url="{{u "/onboarding/dismiss"}}" data-auto-open="{{if .ShowOnboarding}}1{{end}}" aria-label="How to use DumpKeeper">
-  <button type="button" class="modal-close" data-onboard-skip aria-label="Skip guide">&times;</button>
-  <h2 class="modal-title">How to use DumpKeeper</h2>
-  <div class="onboard-track">
-    <div class="onboard-dot"><span class="onboard-num">1</span><span class="onboard-label">Add database</span></div>
-    <div class="onboard-dot"><span class="onboard-num">2</span><span class="onboard-label">Add destination</span></div>
-    <div class="onboard-dot"><span class="onboard-num">3</span><span class="onboard-label">Create backup job</span></div>
-    <div class="onboard-dot"><span class="onboard-num">4</span><span class="onboard-label">Back up &amp; restore</span></div>
-  </div>
-  <div class="onboard-body">
-    <section class="onboard-step" data-step>
-      <h3>Add database</h3>
-      <p>Open <a href="{{u "/databases"}}">Databases</a> and click <strong>Add database</strong>. Fill in the host, port, database name, and credentials, then save.</p>
-      <p>Use the address as seen from the DumpKeeper container, not <code>localhost</code>. Click <strong>Ping</strong> to verify the connection.</p>
-    </section>
-    <section class="onboard-step" data-step hidden>
-      <h3>Add destination</h3>
-      <p>Backups are always kept in local storage. To also send them to S3-compatible storage, open <a href="{{u "/destinations"}}">Destinations</a> and add the endpoint, access keys, and bucket.</p>
-      <p>You can add as many destinations as you want and pick several for one job.</p>
-    </section>
-    <section class="onboard-step" data-step hidden>
-      <h3>Create backup job</h3>
-      <p>Open <a href="{{u "/jobs"}}">Jobs</a> and click <strong>Add job</strong>. Choose the database and destinations, set a five-field cron schedule, and pick how many backups to keep.</p>
-      <p>Leave the schedule empty for manual backups only.</p>
-    </section>
-    <section class="onboard-step" data-step hidden>
-      <h3>Back up &amp; restore</h3>
-      <p>Run a job any time with <strong>Back up now</strong>, or wait for the schedule. Results appear under <a href="{{u "/executions"}}">Executions</a>.</p>
-      <p>Restore any saved dump — or upload your own SQL file — from the <a href="{{u "/restore"}}">Restore</a> page.</p>
-    </section>
-  </div>
-  <div class="onboard-actions">
-    <button type="button" class="btn" data-onboard-skip>Skip guide</button>
-    <span class="onboard-nav">
-      <button type="button" class="btn" data-onboard-prev>&#8249; Previous</button>
-      <button type="button" class="btn btn-primary" data-onboard-next data-label-next="Next &#8250;" data-label-done="Get started">Next &#8250;</button>
-    </span>
-  </div>
-</dialog>
+<div id="product-tour" class="product-tour" data-csrf="{{.CSRF}}" data-dismiss-url="{{u "/onboarding/dismiss"}}" data-auto-start="{{if .ShowOnboarding}}1{{end}}" hidden>
+  <div class="tour-focus" aria-hidden="true"></div>
+  <div class="tour-guard" aria-hidden="true"></div>
+  <section class="tour-popover" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-copy">
+    <div class="tour-progress"><span data-tour-progress></span><button type="button" class="tour-close" data-tour-stop aria-label="Skip guide">&times;</button></div>
+    <h2 id="tour-title" data-tour-title></h2>
+    <p id="tour-copy" data-tour-copy></p>
+    <div class="tour-actions">
+      <button type="button" class="btn" data-tour-stop>Skip tour</button>
+      <span class="tour-nav">
+        <button type="button" class="btn" data-tour-prev>&#8249; Back</button>
+        <button type="button" class="btn btn-primary" data-tour-next>Next &#8250;</button>
+      </span>
+    </div>
+  </section>
+</div>
 {{end}}
 {{if .CSRF}}<script>
 (() => {
@@ -205,63 +182,165 @@ try {
   modal.addEventListener("close", () => modalBody.replaceChildren());
 })();
 (() => {
-  const guide = document.getElementById("onboarding");
-  if (!guide) return;
-  const steps = Array.from(guide.querySelectorAll(".onboard-step"));
-  const dots = Array.from(guide.querySelectorAll(".onboard-dot"));
-  const prevBtn = guide.querySelector("[data-onboard-prev]");
-  const nextBtn = guide.querySelector("[data-onboard-next]");
-  const last = steps.length - 1;
+  const tour = document.getElementById("product-tour");
+  if (!tour) return;
+  const stateKey = "dk-product-tour-step";
+  const steps = [
+    { path: "{{u "/"}}", target: "dashboard-summary", title: "Welcome to DumpKeeper", copy: "The Dashboard summarizes database health, backup activity, row trends, uptime, and recent executions." },
+    { path: "{{u "/"}}", target: "nav-databases", title: "Start with a database", copy: "Databases contains the PostgreSQL connection profiles that backup jobs use.", next: "Open Databases" },
+    { path: "{{u "/databases"}}", target: "new-database", title: "Add a database profile", copy: "This button opens the connection form. Enter an address reachable from the DumpKeeper container, save it, then use Ping to test it." },
+    { path: "{{u "/databases"}}", target: "nav-destinations", title: "Optional S3 storage", copy: "Destinations lets you send additional copies to S3-compatible storage. Local storage is always available.", next: "Open Destinations" },
+    { path: "{{u "/destinations"}}", target: "new-destination", title: "Add a destination", copy: "Use this button to configure an endpoint, access keys, bucket, and optional prefix. You can test the connection after saving." },
+    { path: "{{u "/destinations"}}", target: "nav-jobs", title: "Create the backup workflow", copy: "Jobs connect a database with storage destinations, a schedule, and a retention limit.", next: "Open Jobs" },
+    { path: "{{u "/jobs"}}", target: "new-job", title: "Add a backup job", copy: "Choose a database and destinations, then enter a five-field cron schedule. Leave the schedule empty for manual backups only." },
+    { path: "{{u "/jobs"}}", target: "nav-executions", title: "Follow every backup", copy: "Executions records scheduled and manual runs, including their status, size, duration, and stored copies.", next: "Open Executions" },
+    { path: "{{u "/executions"}}", target: "executions-list", title: "Execution history", copy: "Completed backups can be downloaded or restored here. Running restores also report their progress in this table." },
+    { path: "{{u "/executions"}}", target: "nav-restore", title: "Restore an uploaded dump", copy: "Restore accepts a SQL dump and lets you choose the target database and safety options.", next: "Open Restore" },
+    { path: "{{u "/restore"}}", target: "restore-page", title: "Restore carefully", copy: "A restore can replace existing data. Review the target database and options before selecting a dump and submitting the form." },
+    { path: "{{u "/restore"}}", target: "guide-button", title: "You are ready", copy: "The tour never created or changed anything. Use the Guide button in the sidebar whenever you want to run it again.", next: "Finish" }
+  ];
+  const focus = tour.querySelector(".tour-focus");
+  const guard = tour.querySelector(".tour-guard");
+  const popover = tour.querySelector(".tour-popover");
+  const title = tour.querySelector("[data-tour-title]");
+  const copy = tour.querySelector("[data-tour-copy]");
+  const progress = tour.querySelector("[data-tour-progress]");
+  const prevBtn = tour.querySelector("[data-tour-prev]");
+  const nextBtn = tour.querySelector("[data-tour-next]");
   let index = 0;
+  let active = false;
+  let previousFocus = null;
 
-  // Any way of leaving the guide (finish, skip, Esc) stops it from
-  // showing again; keepalive best effort, the flag stays pending on failure.
+  const saveStep = (value) => {
+    try { sessionStorage.setItem(stateKey, String(value)); } catch {}
+  };
+  const savedStep = () => {
+    try {
+      const value = sessionStorage.getItem(stateKey);
+      if (value === null) return null;
+      const parsed = Number.parseInt(value, 10);
+      return Number.isInteger(parsed) && parsed >= 0 && parsed < steps.length ? parsed : null;
+    } catch { return null; }
+  };
+  const clearStep = () => {
+    try { sessionStorage.removeItem(stateKey); } catch {}
+  };
   const dismiss = () => {
-    if (guide.dataset.dismissed === "1") return;
-    guide.dataset.dismissed = "1";
     const form = new FormData();
-    form.set("csrf", guide.dataset.csrf);
-    fetch(guide.dataset.dismissUrl, { method: "POST", body: form, keepalive: true }).catch(() => {});
+    form.set("csrf", tour.dataset.csrf);
+    fetch(tour.dataset.dismissUrl, { method: "POST", body: form, keepalive: true }).catch(() => {});
   };
-
+  const setMobileNavigation = (target) => {
+    if (!matchMedia("(max-width: 760px)").matches) return;
+    const open = Boolean(target.closest(".sidebar nav"));
+    document.body.classList.toggle("mobile-nav-open", open);
+    const toggle = document.querySelector(".mobile-nav-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    }
+  };
+  const position = (target) => {
+    if (!active) return;
+    const pad = 6;
+    const rect = target.getBoundingClientRect();
+    const left = Math.max(4, rect.left - pad);
+    const top = Math.max(4, rect.top - pad);
+    const right = Math.min(innerWidth - 4, rect.right + pad);
+    const bottom = Math.min(innerHeight - 4, rect.bottom + pad);
+    for (const el of [focus, guard]) {
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+      el.style.width = `${Math.max(1, right - left)}px`;
+      el.style.height = `${Math.max(1, bottom - top)}px`;
+    }
+    popover.style.visibility = "hidden";
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    let popLeft = Math.min(Math.max(12, left), innerWidth - width - 12);
+    let popTop = bottom + 14;
+    if (popTop + height > innerHeight - 12) popTop = top - height - 14;
+    if (popTop < 12) {
+      popTop = Math.min(Math.max(12, top), innerHeight - height - 12);
+      if (right + width + 14 <= innerWidth) popLeft = right + 14;
+      else if (left - width - 14 >= 0) popLeft = left - width - 14;
+    }
+    popover.style.left = `${Math.max(12, popLeft)}px`;
+    popover.style.top = `${Math.max(12, popTop)}px`;
+    popover.style.visibility = "visible";
+  };
   const render = () => {
-    steps.forEach((el, i) => { el.hidden = i !== index; });
-    dots.forEach((el, i) => {
-      el.classList.toggle("is-done", i < index);
-      el.classList.toggle("is-current", i === index);
-      if (i === index) el.setAttribute("aria-current", "step");
-      else el.removeAttribute("aria-current");
-    });
+    const step = steps[index];
+    saveStep(index);
+    if (location.pathname !== step.path) {
+      location.assign(step.path);
+      return;
+    }
+    let target = document.querySelector(`[data-tour="${step.target}"]`);
+    if (!target) target = document.querySelector("main");
+    setMobileNavigation(target);
+    target.scrollIntoView({ block: "center", inline: "nearest" });
+    title.textContent = step.title;
+    copy.textContent = step.copy;
+    progress.textContent = `Step ${index + 1} of ${steps.length}`;
     prevBtn.disabled = index === 0;
-    nextBtn.innerHTML = index === last ? nextBtn.dataset.labelDone : nextBtn.dataset.labelNext;
+    nextBtn.textContent = step.next || (index === steps.length - 1 ? "Finish" : "Next ›");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      position(target);
+      nextBtn.focus();
+    }));
+  };
+  const start = (step = 0) => {
+    previousFocus = document.activeElement;
+    index = step;
+    active = true;
+    tour.hidden = false;
+    document.body.classList.add("tour-active");
+    render();
+  };
+  const stop = () => {
+    if (!active) return;
+    active = false;
+    clearStep();
+    tour.hidden = true;
+    document.body.classList.remove("tour-active", "mobile-nav-open");
+    dismiss();
+    previousFocus?.focus?.();
+  };
+  const move = (offset) => {
+    const next = index + offset;
+    if (next < 0) return;
+    if (next >= steps.length) { stop(); return; }
+    index = next;
+    render();
   };
 
-  prevBtn.addEventListener("click", () => {
-    if (index > 0) { index--; render(); }
-  });
-  nextBtn.addEventListener("click", () => {
-    if (index < last) { index++; render(); return; }
-    dismiss();
-    guide.close();
-  });
-  guide.querySelectorAll("[data-onboard-skip]").forEach((el) => {
-    el.addEventListener("click", () => guide.close());
-  });
-  guide.addEventListener("cancel", dismiss); // Esc
-  guide.addEventListener("close", dismiss);
-  // The Guide button (sidebar footer) reopens the walkthrough from step 1;
-  // closing after a manual open just re-saves an already-set dismissal flag.
+  prevBtn.addEventListener("click", () => move(-1));
+  nextBtn.addEventListener("click", () => move(1));
+  tour.querySelectorAll("[data-tour-stop]").forEach((button) => button.addEventListener("click", stop));
   document.body.addEventListener("click", (e) => {
     if (e.target.closest("[data-open-guide]")) {
-      index = 0;
-      render();
-      guide.showModal();
+      e.preventDefault();
+      start(0);
     }
   });
-  if (guide.dataset.autoOpen === "1") {
-    guide.showModal();
-    render();
-  }
+  document.addEventListener("keydown", (e) => {
+    if (!active) return;
+    if (e.key === "Escape") { e.preventDefault(); stop(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+    if (e.key === "Tab") {
+      const controls = Array.from(popover.querySelectorAll("button:not(:disabled)"));
+      const current = controls.indexOf(document.activeElement);
+      if (e.shiftKey && current <= 0) { e.preventDefault(); controls.at(-1)?.focus(); }
+      else if (!e.shiftKey && current === controls.length - 1) { e.preventDefault(); controls[0]?.focus(); }
+    }
+  });
+  addEventListener("resize", () => { if (active) render(); });
+
+  const saved = savedStep();
+  if (saved !== null) start(saved);
+  else if (tour.dataset.autoStart === "1") start(0);
 })();
 </script>{{end}}
 </body>
