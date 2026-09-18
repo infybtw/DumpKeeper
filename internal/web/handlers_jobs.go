@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"dumpkeeper/internal/backup"
 	"dumpkeeper/internal/db"
+	"dumpkeeper/internal/scheduler"
 
 	"github.com/robfig/cron/v3"
 )
@@ -27,6 +29,8 @@ type jobRow struct {
 	DatabaseName     string
 	Target           string
 	Schedule         string
+	Timezone         string
+	NextRun          string
 	Enabled          bool
 	DestLocal        bool
 	DestinationNames []string
@@ -78,6 +82,7 @@ func (s *Server) jobRows() ([]jobRow, error) {
 			ID:        j.ID,
 			Name:      j.Name,
 			Schedule:  j.Schedule,
+			Timezone:  j.Timezone,
 			Enabled:   j.Enabled,
 			DestLocal: j.DestLocal,
 			KeepLast:  j.KeepLast,
@@ -91,6 +96,9 @@ func (s *Server) jobRows() ([]jobRow, error) {
 				row.DestinationNames = append(row.DestinationNames, d.Name)
 			}
 		}
+		if next, ok := scheduler.NextRun(j, time.Now()); ok {
+			row.NextRun = formatNextRun(next, j.Timezone)
+		}
 		if b, ok := latest[j.ID]; ok {
 			row.LastStatus = b.Status
 			row.LastError = b.Error
@@ -103,6 +111,27 @@ func (s *Server) jobRows() ([]jobRow, error) {
 	return rows, nil
 }
 
+func formatNextRun(next time.Time, timezone string) string {
+	// cron.Schedule.Next may return a time in the caller's location. Convert it
+	// explicitly before showing the job's time-zone label.
+	if cronTimezone, err := scheduler.CronTimezone(timezone); err == nil {
+		if location, err := time.LoadLocation(cronTimezone); err == nil {
+			next = next.In(location)
+		}
+	}
+	until := time.Until(next).Truncate(time.Minute)
+	var relative string
+	switch {
+	case until < time.Minute:
+		relative = "in less than a minute"
+	case until < time.Hour:
+		relative = fmt.Sprintf("in %dm", int(until.Minutes()))
+	default:
+		relative = fmt.Sprintf("in %dh %dm", int(until.Hours()), int(until.Minutes())%60)
+	}
+	return fmt.Sprintf("Next: %s %s (%s)", next.Format("2006-01-02 15:04"), timezone, relative)
+}
+
 // jobForm is the display shape of the job create/edit form.
 type jobForm struct {
 	Action   string
@@ -110,6 +139,7 @@ type jobForm struct {
 	ID       int64
 	Name     string
 	Schedule string
+	Timezone string
 	KeepLast string
 	Enabled  bool
 
@@ -124,7 +154,7 @@ type jobForm struct {
 // IsNew distinguishes create from edit in the template.
 func (f jobForm) IsNew() bool { return f.ID == 0 }
 func (s *Server) defaultJobForm(action string) jobForm {
-	f := jobForm{Action: action, KeepLast: "7", Enabled: true, DestLocal: true}
+	f := jobForm{Action: action, KeepLast: "7", Timezone: time.Local.String(), Enabled: true, DestLocal: true}
 	f.Databases, _ = s.db.ListDatabases()
 	f.Destinations, _ = s.db.ListDestinations()
 	return f
@@ -198,6 +228,7 @@ func (s *Server) jobEditForm(w http.ResponseWriter, r *http.Request) {
 	f.Enabled = job.Enabled
 	f.Name = job.Name
 	f.Schedule = job.Schedule
+	f.Timezone = job.Timezone
 	f.KeepLast = strconv.FormatInt(job.KeepLast, 10)
 	f.DatabaseID = job.DatabaseID
 	f.DestLocal = job.DestLocal
@@ -323,12 +354,16 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 		Action:    jobAction(id),
 		Name:      strings.TrimSpace(r.FormValue("name")),
 		Schedule:  strings.TrimSpace(r.FormValue("schedule")),
+		Timezone:  strings.TrimSpace(r.FormValue("timezone")),
 		KeepLast:  strings.TrimSpace(r.FormValue("keep_last")),
 		Enabled:   r.FormValue("enabled") == "1",
 		DestLocal: r.FormValue("dest_local") == "1",
 	}
 	f.Databases, _ = s.db.ListDatabases()
 	f.Destinations, _ = s.db.ListDestinations()
+	if f.Timezone == "" {
+		f.Timezone = time.Local.String()
+	}
 	for _, v := range r.Form["dest"] {
 		if did, err := parseID(v); err == nil {
 			f.DestinationIDs = append(f.DestinationIDs, did)
@@ -362,9 +397,14 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 		}
 		keepLast = k
 	}
-	if f.Error == "" && f.Schedule != "" {
-		if _, err := cron.ParseStandard(f.Schedule); err != nil {
-			f.Error = "Invalid cron schedule: " + err.Error()
+	if f.Error == "" {
+		cronTimezone, err := scheduler.CronTimezone(f.Timezone)
+		if err != nil {
+			f.Error = "Invalid time zone: use an IANA name such as Europe/Moscow, UTC, or UTC+3."
+		} else if f.Schedule != "" {
+			if _, err := cron.ParseStandard("CRON_TZ=" + cronTimezone + " " + f.Schedule); err != nil {
+				f.Error = "Invalid cron schedule: " + err.Error()
+			}
 		}
 	}
 	if f.Error == "" {
@@ -378,7 +418,7 @@ func (s *Server) parseJobForm(r *http.Request, id int64) (db.Job, jobForm) {
 	}
 	job := db.Job{
 		ID: id, Name: f.Name, DatabaseID: f.DatabaseID,
-		Schedule: f.Schedule, Enabled: f.Enabled, DestLocal: f.DestLocal,
+		Schedule: f.Schedule, Timezone: f.Timezone, Enabled: f.Enabled, DestLocal: f.DestLocal,
 		KeepLast: keepLast, DestinationIDs: f.DestinationIDs,
 	}
 	return job, f

@@ -6,7 +6,9 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"dumpkeeper/internal/db"
 	"dumpkeeper/internal/scheduler"
@@ -61,4 +63,11 @@ func TestJobActionsRedirectToJobsPage(t *testing.T) {
 		s.jobDelete(w, r)
 		assertJobsRedirect(t, w)
 	})
+}
+
+func TestFormatNextRunUsesJobTimezone(t *testing.T) {
+	got := formatNextRun(time.Date(2026, time.September, 18, 21, 0, 0, 0, time.UTC), "UTC+3")
+	if !strings.HasPrefix(got, "Next: 2026-09-19 00:00 UTC+3") {
+		t.Fatalf("next-run display = %q", got)
+	}
 }

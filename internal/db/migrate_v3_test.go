@@ -55,7 +55,7 @@ func TestMigrateV3JobEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !j.Enabled || j.Schedule != "0 2 * * *" || j.Name != "nightly" {
+	if !j.Enabled || j.Schedule != "0 2 * * *" || j.Timezone != "Local" || j.Name != "nightly" {
 		t.Fatalf("migrated job wrong: %+v", j)
 	}
 
@@ -80,7 +80,7 @@ func TestMigrateV3JobEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	off, err := store.CreateJob(Job{Name: "paused", DatabaseID: d.ID, Enabled: false})
+	off, err := store.CreateJob(Job{Name: "paused", DatabaseID: d.ID, Timezone: "UTC", Enabled: false})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestMigrateV3JobEnabled(t *testing.T) {
 	if err := store.UpdateJob(j); err != nil {
 		t.Fatal(err)
 	}
-	if j, err = store.GetJob(off.ID); err != nil || !j.Enabled || j.Name != "resumed" {
+	if j, err = store.GetJob(off.ID); err != nil || !j.Enabled || j.Name != "resumed" || j.Timezone != "UTC" {
 		t.Fatalf("update lost enabled: %+v (%v)", j, err)
 	}
 }

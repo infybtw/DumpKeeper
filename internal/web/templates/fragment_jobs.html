@@ -12,7 +12,7 @@
           <span class="slider"></span>
         </label>
       </form>
-      {{if .Schedule}}<code>{{.Schedule}}</code>{{else}}<span class="muted">manual</span>{{end}}
+      {{if .Schedule}}<span><code>{{.Schedule}}</code><div class="hint">{{.Timezone}}</div>{{if .NextRun}}<div class="hint">{{.NextRun}}</div>{{end}}</span>{{else}}<span class="muted">manual</span>{{end}}
     </div>
   </td>
   <td>
