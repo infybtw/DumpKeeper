@@ -1,9 +1,12 @@
 {{define "content"}}
 <div class="page-head">
   <h1>Summary</h1>
-  <nav class="range-switch" aria-label="Dashboard time range">
-    {{range .Data.Periods}}<a href="{{u "/"}}?period={{.Key}}" class="range-option{{if eq .Key $.Data.Period}} is-active{{end}}">{{.Label}}</a>{{end}}
-  </nav>
+  <div class="page-head-actions">
+    <button type="button" class="btn btn-sm" data-open-guide aria-haspopup="dialog">Guide</button>
+    <nav class="range-switch" aria-label="Dashboard time range">
+      {{range .Data.Periods}}<a href="{{u "/"}}?period={{.Key}}" class="range-option{{if eq .Key $.Data.Period}} is-active{{end}}">{{.Label}}</a>{{end}}
+    </nav>
+  </div>
 </div>
 <div hx-get="{{u "/fragment/dashboard"}}?period={{.Data.Period}}" hx-trigger="load, every 10s" hx-swap="innerHTML">
   {{template "dashboard-content" .Data}}

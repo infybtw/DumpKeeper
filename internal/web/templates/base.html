@@ -84,8 +84,8 @@ try {
   <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
 </dialog>
 {{end}}
-{{if .ShowOnboarding}}
-<dialog id="onboarding" class="modal onboard" data-csrf="{{.CSRF}}" data-dismiss-url="{{u "/onboarding/dismiss"}}" aria-label="How to use DumpKeeper">
+{{if .CSRF}}
+<dialog id="onboarding" class="modal onboard" data-csrf="{{.CSRF}}" data-dismiss-url="{{u "/onboarding/dismiss"}}" data-auto-open="{{if .ShowOnboarding}}1{{end}}" aria-label="How to use DumpKeeper">
   <button type="button" class="modal-close" data-onboard-skip aria-label="Skip guide">&times;</button>
   <h2 class="modal-title">How to use DumpKeeper</h2>
   <div class="onboard-track">
@@ -245,8 +245,19 @@ try {
   });
   guide.addEventListener("cancel", dismiss); // Esc
   guide.addEventListener("close", dismiss);
-  guide.showModal();
-  render();
+  // The Guide button (dashboard header) reopens the walkthrough from step 1;
+  // closing after a manual open just re-saves an already-set dismissal flag.
+  document.body.addEventListener("click", (e) => {
+    if (e.target.closest("[data-open-guide]")) {
+      index = 0;
+      render();
+      guide.showModal();
+    }
+  });
+  if (guide.dataset.autoOpen === "1") {
+    guide.showModal();
+    render();
+  }
 })();
 </script>{{end}}
 </body>
