@@ -2,43 +2,120 @@
 <div class="page-head">
   <h1>Settings</h1>
 </div>
-<form class="form" method="post" action="{{u "/settings"}}">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <label>Ping interval, minutes
-    <input type="number" name="interval_minutes" min="0" max="10080" step="1" value="{{.Data.IntervalMinutes}}">
-    <span class="hint">How often every database is probed with <code>psql SELECT 1</code>; failures are recorded as downtime periods on the <a href="{{u "/availability"}}">Availability</a> page. 0 disables monitoring.</span>
-  </label>
-  <fieldset class="dashboard-settings">
-    <legend>Dashboard panels</legend>
-    <span class="hint">Choose the panels shown on the Dashboard. This does not delete any history or metrics.</span>
-    <label class="check"><input type="checkbox" name="dashboard_panel" value="summary" {{if .Data.Dashboard.Summary}}checked{{end}}>Summary cards</label>
-    <label class="check"><input type="checkbox" name="dashboard_panel" value="executions" {{if .Data.Dashboard.Executions}}checked{{end}}>Backup execution trend</label>
-    <label class="check"><input type="checkbox" name="dashboard_panel" value="rows" {{if .Data.Dashboard.Rows}}checked{{end}}>Database row trends</label>
-    <label class="check"><input type="checkbox" name="dashboard_panel" value="uptime" {{if .Data.Dashboard.Uptime}}checked{{end}}>Database uptime</label>
-    <label class="check"><input type="checkbox" name="dashboard_panel" value="recent" {{if .Data.Dashboard.Recent}}checked{{end}}>Recent executions</label>
-  </fieldset>
-  <div>
-    <button class="btn btn-primary" type="submit">Save</button>
+<div class="settings-layout" data-settings-tabs>
+  <nav class="settings-menu" role="tablist" aria-label="Settings sections">
+    <button class="settings-tab is-active" type="button" role="tab" id="settings-tab-general" aria-controls="settings-panel-general" aria-selected="true" data-settings-tab="general">
+      <span class="settings-tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span>
+      <span><strong>General</strong><small>Monitoring interval</small></span>
+    </button>
+    <button class="settings-tab" type="button" role="tab" id="settings-tab-dashboard" aria-controls="settings-panel-dashboard" aria-selected="false" tabindex="-1" data-settings-tab="dashboard">
+      <span class="settings-tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
+      <span><strong>Dashboard</strong><small>Visible panels</small></span>
+    </button>
+    <button class="settings-tab" type="button" role="tab" id="settings-tab-backup" aria-controls="settings-panel-backup" aria-selected="false" tabindex="-1" data-settings-tab="backup">
+      <span class="settings-tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></svg></span>
+      <span><strong>Backup</strong><small>Export configuration</small></span>
+    </button>
+    <button class="settings-tab" type="button" role="tab" id="settings-tab-restore" aria-controls="settings-panel-restore" aria-selected="false" tabindex="-1" data-settings-tab="restore">
+      <span class="settings-tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 5h14"/></svg></span>
+      <span><strong>Restore</strong><small>Import configuration</small></span>
+    </button>
+  </nav>
+
+  <div class="settings-content">
+    <form method="post" action="{{u "/settings"}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <section class="settings-panel" role="tabpanel" id="settings-panel-general" aria-labelledby="settings-tab-general" data-settings-panel="general">
+        <div class="settings-panel-head">
+          <h2>General</h2>
+          <p>Configure database availability monitoring.</p>
+        </div>
+        <div class="settings-panel-body">
+          <label>Ping interval, minutes
+            <input type="number" name="interval_minutes" min="0" max="10080" step="1" value="{{.Data.IntervalMinutes}}">
+            <span class="hint">How often every database is probed with <code>psql SELECT 1</code>. Failures are recorded as downtime periods on the <a href="{{u "/availability"}}">Availability</a> page. Set to 0 to disable monitoring.</span>
+          </label>
+        </div>
+        <div class="settings-panel-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+      </section>
+
+      <section class="settings-panel" role="tabpanel" id="settings-panel-dashboard" aria-labelledby="settings-tab-dashboard" data-settings-panel="dashboard" hidden>
+        <div class="settings-panel-head">
+          <h2>Dashboard panels</h2>
+          <p>Choose which information appears on the Dashboard.</p>
+        </div>
+        <div class="settings-panel-body settings-checks">
+          <label class="check"><input type="checkbox" name="dashboard_panel" value="summary" {{if .Data.Dashboard.Summary}}checked{{end}}><span><strong>Summary cards</strong><small>Database, job, execution, and restoration totals.</small></span></label>
+          <label class="check"><input type="checkbox" name="dashboard_panel" value="executions" {{if .Data.Dashboard.Executions}}checked{{end}}><span><strong>Backup execution trend</strong><small>Completed and failed backups over time.</small></span></label>
+          <label class="check"><input type="checkbox" name="dashboard_panel" value="rows" {{if .Data.Dashboard.Rows}}checked{{end}}><span><strong>Database row trends</strong><small>Row-count history from completed backups.</small></span></label>
+          <label class="check"><input type="checkbox" name="dashboard_panel" value="uptime" {{if .Data.Dashboard.Uptime}}checked{{end}}><span><strong>Database uptime</strong><small>Availability percentage and recent checks.</small></span></label>
+          <label class="check"><input type="checkbox" name="dashboard_panel" value="recent" {{if .Data.Dashboard.Recent}}checked{{end}}><span><strong>Recent executions</strong><small>The latest backup execution results.</small></span></label>
+        </div>
+        <div class="settings-panel-actions"><button class="btn btn-primary" type="submit">Save dashboard</button></div>
+      </section>
+    </form>
+
+    <section class="settings-panel" role="tabpanel" id="settings-panel-backup" aria-labelledby="settings-tab-backup" data-settings-panel="backup" hidden>
+      <div class="settings-panel-head">
+        <h2>Configuration backup</h2>
+        <p>Export DumpKeeper settings and history as a SQLite snapshot.</p>
+      </div>
+      <form class="settings-panel-body" method="post" action="{{u "/settings/backup"}}">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <p class="hint">The snapshot includes database profiles, destinations, jobs, settings, history, and sessions. PostgreSQL dump files and environment variables are not included.</p>
+        <p class="settings-warning"><strong>Keep this file private.</strong> It contains saved database passwords, S3 credentials, and session tokens in plain text.</p>
+        <div><button class="btn btn-primary" type="submit">Download configuration backup</button></div>
+      </form>
+    </section>
+
+    <section class="settings-panel" role="tabpanel" id="settings-panel-restore" aria-labelledby="settings-tab-restore" data-settings-panel="restore" hidden>
+      <div class="settings-panel-head">
+        <h2>Restore configuration</h2>
+        <p>Replace the current configuration from a saved snapshot.</p>
+      </div>
+      <form class="settings-panel-body" method="post" action="{{u "/settings/restore"}}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <label>Configuration backup file
+          <input type="file" name="backup" accept=".db,application/octet-stream" required>
+        </label>
+        <p class="settings-warning"><strong>This replaces the current configuration.</strong> Database profiles, destinations, jobs, settings, history, and sessions will be overwritten. PostgreSQL dump files are not restored.</p>
+        <div><button class="btn btn-primary" type="submit">Restore configuration backup</button></div>
+      </form>
+    </section>
   </div>
-</form>
-<h2>Configuration backup</h2>
-<form class="form" method="post" action="{{u "/settings/backup"}}">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <p class="hint">Download a consistent SQLite snapshot of DumpKeeper: database profiles, destinations, jobs, settings, history, and sessions. PostgreSQL dump files and environment variables (including the panel login and password) are not included.</p>
-  <p class="hint"><strong>Contains saved database passwords, S3 credentials, and session tokens in plain text. Keep this file private.</strong></p>
-  <div>
-    <button class="btn btn-primary" type="submit">Download configuration backup</button>
-  </div>
-</form>
-<h2>Restore configuration</h2>
-<form class="form" method="post" action="{{u "/settings/restore"}}" enctype="multipart/form-data">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <label>Configuration backup file
-    <input type="file" name="backup" accept=".db,application/octet-stream" required>
-  </label>
-  <p class="hint"><strong>This replaces all current database profiles, destinations, jobs, settings, history, and sessions with the uploaded backup. PostgreSQL dump files are not restored.</strong></p>
-  <div>
-    <button class="btn btn-primary" type="submit">Restore configuration backup</button>
-  </div>
-</form>
+</div>
+<script>
+(() => {
+  const root = document.querySelector("[data-settings-tabs]");
+  if (!root) return;
+  const tabs = Array.from(root.querySelectorAll("[data-settings-tab]"));
+  const panels = Array.from(root.querySelectorAll("[data-settings-panel]"));
+  const names = new Set(tabs.map((tab) => tab.dataset.settingsTab));
+
+  const activate = (name, focus = false) => {
+    if (!names.has(name)) name = "general";
+    tabs.forEach((tab) => {
+      const active = tab.dataset.settingsTab === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+      if (active && focus) tab.focus();
+    });
+    panels.forEach((panel) => { panel.hidden = panel.dataset.settingsPanel !== name; });
+    history.replaceState(null, "", `#${name}`);
+  };
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activate(tab.dataset.settingsTab));
+    tab.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+      event.preventDefault();
+      const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
+      const next = (index + (forward ? 1 : -1) + tabs.length) % tabs.length;
+      activate(tabs[next].dataset.settingsTab, true);
+    });
+  });
+  activate(location.hash.slice(1));
+})();
+</script>
 {{end}}
