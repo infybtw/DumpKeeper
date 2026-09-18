@@ -84,6 +84,47 @@ try {
   <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
 </dialog>
 {{end}}
+{{if .ShowOnboarding}}
+<dialog id="onboarding" class="modal onboard" data-csrf="{{.CSRF}}" data-dismiss-url="{{u "/onboarding/dismiss"}}" aria-label="How to use DumpKeeper">
+  <button type="button" class="modal-close" data-onboard-skip aria-label="Skip guide">&times;</button>
+  <h2 class="modal-title">How to use DumpKeeper</h2>
+  <div class="onboard-track">
+    <div class="onboard-dot"><span class="onboard-num">1</span><span class="onboard-label">Add database</span></div>
+    <div class="onboard-dot"><span class="onboard-num">2</span><span class="onboard-label">Add destination</span></div>
+    <div class="onboard-dot"><span class="onboard-num">3</span><span class="onboard-label">Create backup job</span></div>
+    <div class="onboard-dot"><span class="onboard-num">4</span><span class="onboard-label">Back up &amp; restore</span></div>
+  </div>
+  <div class="onboard-body">
+    <section class="onboard-step" data-step>
+      <h3>Add database</h3>
+      <p>Open <a href="{{u "/databases"}}">Databases</a> and click <strong>Add database</strong>. Fill in the host, port, database name, and credentials, then save.</p>
+      <p>Use the address as seen from the DumpKeeper container, not <code>localhost</code>. Click <strong>Ping</strong> to verify the connection.</p>
+    </section>
+    <section class="onboard-step" data-step hidden>
+      <h3>Add destination</h3>
+      <p>Backups are always kept in local storage. To also send them to S3-compatible storage, open <a href="{{u "/destinations"}}">Destinations</a> and add the endpoint, access keys, and bucket.</p>
+      <p>You can add as many destinations as you want and pick several for one job.</p>
+    </section>
+    <section class="onboard-step" data-step hidden>
+      <h3>Create backup job</h3>
+      <p>Open <a href="{{u "/jobs"}}">Jobs</a> and click <strong>Add job</strong>. Choose the database and destinations, set a five-field cron schedule, and pick how many backups to keep.</p>
+      <p>Leave the schedule empty for manual backups only.</p>
+    </section>
+    <section class="onboard-step" data-step hidden>
+      <h3>Back up &amp; restore</h3>
+      <p>Run a job any time with <strong>Back up now</strong>, or wait for the schedule. Results appear under <a href="{{u "/executions"}}">Executions</a>.</p>
+      <p>Restore any saved dump — or upload your own SQL file — from the <a href="{{u "/restore"}}">Restore</a> page.</p>
+    </section>
+  </div>
+  <div class="onboard-actions">
+    <button type="button" class="btn" data-onboard-skip>Skip guide</button>
+    <span class="onboard-nav">
+      <button type="button" class="btn" data-onboard-prev>&#8249; Previous</button>
+      <button type="button" class="btn btn-primary" data-onboard-next data-label-next="Next &#8250;" data-label-done="Get started">Next &#8250;</button>
+    </span>
+  </div>
+</dialog>
+{{end}}
 {{if .CSRF}}<script>
 (() => {
   const body = document.body;
@@ -158,6 +199,54 @@ try {
   });
   modal.addEventListener("cancel", (e) => e.preventDefault());
   modal.addEventListener("close", () => modalBody.replaceChildren());
+})();
+(() => {
+  const guide = document.getElementById("onboarding");
+  if (!guide) return;
+  const steps = Array.from(guide.querySelectorAll(".onboard-step"));
+  const dots = Array.from(guide.querySelectorAll(".onboard-dot"));
+  const prevBtn = guide.querySelector("[data-onboard-prev]");
+  const nextBtn = guide.querySelector("[data-onboard-next]");
+  const last = steps.length - 1;
+  let index = 0;
+
+  // Any way of leaving the guide (finish, skip, Esc) stops it from
+  // showing again; keepalive best effort, the flag stays pending on failure.
+  const dismiss = () => {
+    if (guide.dataset.dismissed === "1") return;
+    guide.dataset.dismissed = "1";
+    const form = new FormData();
+    form.set("csrf", guide.dataset.csrf);
+    fetch(guide.dataset.dismissUrl, { method: "POST", body: form, keepalive: true }).catch(() => {});
+  };
+
+  const render = () => {
+    steps.forEach((el, i) => { el.hidden = i !== index; });
+    dots.forEach((el, i) => {
+      el.classList.toggle("is-done", i < index);
+      el.classList.toggle("is-current", i === index);
+      if (i === index) el.setAttribute("aria-current", "step");
+      else el.removeAttribute("aria-current");
+    });
+    prevBtn.disabled = index === 0;
+    nextBtn.innerHTML = index === last ? nextBtn.dataset.labelDone : nextBtn.dataset.labelNext;
+  };
+
+  prevBtn.addEventListener("click", () => {
+    if (index > 0) { index--; render(); }
+  });
+  nextBtn.addEventListener("click", () => {
+    if (index < last) { index++; render(); return; }
+    dismiss();
+    guide.close();
+  });
+  guide.querySelectorAll("[data-onboard-skip]").forEach((el) => {
+    el.addEventListener("click", () => guide.close());
+  });
+  guide.addEventListener("cancel", dismiss); // Esc
+  guide.addEventListener("close", dismiss);
+  guide.showModal();
+  render();
 })();
 </script>{{end}}
 </body>

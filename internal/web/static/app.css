@@ -375,6 +375,75 @@ dialog.modal:has(.execution-metrics-layout) #modal-body {
 .modal-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 .modal .form { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
 .modal .flash { max-width: none; margin: 0 0 0.75rem; }
+/* First-run guide: numbered stepper over a progress line, one panel per step. */
+dialog.modal.onboard { width: min(640px, calc(100vw - 2rem)); }
+.onboard-track { display: flex; margin: 1.1rem 0 1rem; }
+.onboard-dot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+/* Connector from the previous circle's center to this one. Circles keep
+   position/z-index below, so they always paint above every connector. */
+.onboard-dot + .onboard-dot::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+}
+.onboard-dot.is-done::before,
+.onboard-dot.is-current::before { background: var(--accent); }
+.onboard-num {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.onboard-dot.is-done .onboard-num {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--accent);
+}
+.onboard-dot.is-current .onboard-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.onboard-label { max-width: 9rem; color: var(--muted); font-size: 0.78rem; line-height: 1.3; }
+.onboard-dot.is-current .onboard-label { color: var(--text); font-weight: 600; }
+.onboard-body {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.onboard-step h3 { margin: 0 0 0.45rem; font-size: 1.05rem; }
+.onboard-step p { margin: 0 0 0.5rem; font-size: 0.92rem; }
+.onboard-step p:last-child { margin-bottom: 0; }
+.onboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+}
+.onboard-nav { display: flex; gap: 0.5rem; margin-left: auto; }
 .metric-summary {
   display: flex;
   align-items: baseline;
@@ -578,6 +647,10 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
     height: auto;
     overflow: auto;
   }
+  .onboard-dot { gap: 0.3rem; }
+  .onboard-num { width: 28px; height: 28px; font-size: 0.8rem; }
+  .onboard-dot + .onboard-dot::before { top: 13px; }
+  .onboard-label { font-size: 0.7rem; }
   .execution-metrics-layout {
     grid-template-columns: 1fr;
     max-height: none;
