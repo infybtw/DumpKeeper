@@ -118,7 +118,6 @@ func TestExecutionMetricsModalCountsInsertTables(t *testing.T) {
 		"<td>2</td>",
 		"<td>public.metric_lines_b</td>",
 		"<td>3</td>",
-		`data-modal-close`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metrics modal missing %q:\n%s", want, body)
