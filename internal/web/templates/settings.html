@@ -41,12 +41,4 @@
     <button class="btn btn-primary" type="submit">Restore configuration backup</button>
   </div>
 </form>
-<h2>Setup guide</h2>
-<form class="form" method="post" action="{{u "/onboarding/reset"}}">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <p class="hint">Show the first-run &ldquo;How to use DumpKeeper&rdquo; guide again on the next page load.</p>
-  <div>
-    <button class="btn" type="submit">Show setup guide again</button>
-  </div>
-</form>
 {{end}}

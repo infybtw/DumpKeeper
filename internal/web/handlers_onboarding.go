@@ -20,7 +20,8 @@ func (s *Server) onboardingPending() bool {
 }
 
 // onboardingDismiss records that the guide was finished or skipped so it is
-// not shown again. Called by fetch when the dialog closes.
+// not shown again automatically. The sidebar Guide button reopens it at any
+// time. Called by fetch when the dialog closes.
 func (s *Server) onboardingDismiss(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.SetSetting(db.SettingOnboardingDone, "1"); err != nil {
 		slog.Warn("save onboarding state", "err", err)
@@ -28,15 +29,4 @@ func (s *Server) onboardingDismiss(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// onboardingReset clears the dismissal so the guide shows on the next page
-// load (Settings → "Show setup guide again").
-func (s *Server) onboardingReset(w http.ResponseWriter, r *http.Request) {
-	if err := s.db.SetSetting(db.SettingOnboardingDone, ""); err != nil {
-		s.redirectTo(w, r, "/settings", "", "Could not reset the setup guide: "+err.Error())
-		return
-	}
-	// The cleared flag makes page() render the guide dialog on redirect.
-	s.redirectTo(w, r, "/settings", "", "")
 }
