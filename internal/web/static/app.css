@@ -280,7 +280,6 @@ form.inline { display: inline-block; }
 .muted { color: var(--muted); }
 .hint { font-size: 0.76rem; color: var(--muted); }
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-.page-head-actions { display: flex; align-items: center; gap: 0.5rem; }
 .range-switch { display: inline-flex; flex-wrap: wrap; padding: 0.2rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .range-option { padding: 0.25rem 0.55rem; border-radius: 5px; color: var(--muted); font-size: 0.78rem; font-weight: 600; text-decoration: none; }
 .range-option:hover { color: var(--text); }

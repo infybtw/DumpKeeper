@@ -50,6 +50,10 @@ try {
     </a>
   </nav>
   <div class="sidebar-footer">
+    <button class="sidebar-control" type="button" data-open-guide aria-haspopup="dialog">
+      <span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 1 1 4 2.5c-.9.5-1.2 1-1.2 1.9"/><path d="M12 17h.01"/></svg></span>
+      <span class="sidebar-label">Guide</span>
+    </button>
     <button class="sidebar-control theme-toggle" type="button" aria-pressed="false">
       <span class="sidebar-icon theme-icon" aria-hidden="true">
         <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
@@ -245,7 +249,7 @@ try {
   });
   guide.addEventListener("cancel", dismiss); // Esc
   guide.addEventListener("close", dismiss);
-  // The Guide button (dashboard header) reopens the walkthrough from step 1;
+  // The Guide button (sidebar footer) reopens the walkthrough from step 1;
   // closing after a manual open just re-saves an already-set dismissal flag.
   document.body.addEventListener("click", (e) => {
     if (e.target.closest("[data-open-guide]")) {
