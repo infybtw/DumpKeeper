@@ -47,3 +47,38 @@ func TestRescheduleSkipsDisabledJobs(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+func TestRescheduleUsesJobTimezone(t *testing.T) {
+	s := New(func(int64, string) error { return nil })
+	defer s.Stop()
+
+	s.Reschedule(db.Job{ID: 1, Name: "tokyo", Schedule: "0 9 * * *", Timezone: "Asia/Tokyo", Enabled: true})
+	entry := s.c.Entry(s.entries[1])
+	got := entry.Schedule.Next(time.Date(2026, time.January, 1, 23, 59, 0, 0, time.UTC))
+	want := time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("next run = %s, want %s", got, want)
+	}
+}
+
+func TestRescheduleUsesUTCOffsetTimezone(t *testing.T) {
+	s := New(func(int64, string) error { return nil })
+	defer s.Stop()
+
+	s.Reschedule(db.Job{ID: 1, Name: "offset", Schedule: "0 9 * * *", Timezone: "UTC+3", Enabled: true})
+	entry := s.c.Entry(s.entries[1])
+	got := entry.Schedule.Next(time.Date(2026, time.January, 1, 5, 59, 0, 0, time.UTC))
+	want := time.Date(2026, time.January, 1, 6, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("next run = %s, want %s", got, want)
+	}
+}
+
+func TestNextRunUsesJobTimezone(t *testing.T) {
+	job := db.Job{Schedule: "0 9 * * *", Timezone: "UTC+3", Enabled: true}
+	got, ok := NextRun(job, time.Date(2026, time.January, 1, 5, 59, 0, 0, time.UTC))
+	want := time.Date(2026, time.January, 1, 6, 0, 0, 0, time.UTC)
+	if !ok || !got.Equal(want) {
+		t.Fatalf("next run = %s, %t; want %s, true", got, ok, want)
+	}
+}
