@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="page-head">
+<div class="page-head" data-tour="dashboard-summary">
   <h1>Summary</h1>
   <nav class="range-switch" aria-label="Dashboard time range">
     {{range .Data.Periods}}<a href="{{u "/"}}?period={{.Key}}" class="range-option{{if eq .Key $.Data.Period}} is-active{{end}}">{{.Label}}</a>{{end}}

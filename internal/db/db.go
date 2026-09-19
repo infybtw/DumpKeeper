@@ -1212,6 +1212,10 @@ const SettingPingInterval = "ping_interval_seconds"
 // SettingDashboardPanels stores the visible dashboard panel identifiers.
 const SettingDashboardPanels = "dashboard_panels"
 
+// SettingOnboardingDone marks that the first-run guide was finished or
+// skipped ("1"); any other value keeps the guide pending.
+const SettingOnboardingDone = "onboarding_done"
+
 // PingState is the latest availability probe result for a database.
 type PingState struct {
 	DatabaseID int64

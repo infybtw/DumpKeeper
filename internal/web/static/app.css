@@ -274,12 +274,83 @@ form.inline { display: inline-block; }
 .checks { display: flex; gap: 1.25rem; align-items: center; padding-top: 1.2rem; }
 .form label.check { display: flex; align-items: center; gap: 0.45rem; flex-direction: row; }
 .check input { width: auto; }
-.dashboard-settings { display: grid; gap: 0.55rem; margin: 0; padding: 0.85rem 1rem 0.95rem; border: 1px solid var(--border); border-radius: 8px; }
-.dashboard-settings legend { padding: 0 0.3rem; font-size: 0.85rem; font-weight: 600; }
-.dashboard-settings .hint { margin-bottom: 0.1rem; }
 .muted { color: var(--muted); }
 .hint { font-size: 0.76rem; color: var(--muted); }
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.settings-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 1rem; align-items: start; }
+.settings-menu {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+.settings-tab {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-tab:hover { background: var(--bg); color: var(--text); }
+.settings-tab.is-active { background: color-mix(in srgb, var(--accent) 13%, var(--card)); color: var(--accent); }
+.settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-tab > span:last-child { min-width: 0; display: grid; gap: 0.08rem; }
+.settings-tab strong { color: inherit; font-size: 0.86rem; }
+.settings-tab small { overflow: hidden; color: var(--muted); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-tab-icon { flex: 0 0 1.5rem; display: grid; place-items: center; }
+.settings-tab-icon svg { width: 1.25rem; height: 1.25rem; }
+.settings-content, .settings-content > form { min-width: 0; margin: 0; }
+.settings-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+.settings-panel[hidden] { display: none; }
+.settings-panel-head { padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--border); }
+.settings-panel-head h2 { margin: 0; font-size: 1rem; }
+.settings-panel-head p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.8rem; }
+.settings-panel-body { display: grid; gap: 0.9rem; padding: 1.25rem; }
+.settings-panel-body label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.83rem; }
+.settings-panel-body input[type="number"],
+.settings-panel-body input[type="file"] {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+.settings-panel-actions { padding: 0.85rem 1.25rem; border-top: 1px solid var(--border); background: var(--bg); }
+.settings-checks { gap: 0; padding-block: 0.65rem; }
+.settings-checks label.check {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-checks label.check:last-child { border-bottom: 0; }
+.settings-checks input { flex: none; width: auto; margin-top: 0.25rem; accent-color: var(--accent); }
+.settings-checks label.check span { display: grid; gap: 0.1rem; }
+.settings-checks label.check small { color: var(--muted); font-size: 0.74rem; font-weight: 400; }
+.settings-warning { margin: 0; padding: 0.75rem 0.85rem; border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--warn) 9%, var(--card)); color: var(--muted); font-size: 0.78rem; }
+.settings-warning strong { color: var(--warn); }
 .range-switch { display: inline-flex; flex-wrap: wrap; padding: 0.2rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .range-option { padding: 0.25rem 0.55rem; border-radius: 5px; color: var(--muted); font-size: 0.78rem; font-weight: 600; text-decoration: none; }
 .range-option:hover { color: var(--text); }
@@ -375,6 +446,42 @@ dialog.modal:has(.execution-metrics-layout) #modal-body {
 .modal-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 .modal .form { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
 .modal .flash { max-width: none; margin: 0 0 0.75rem; }
+/* Cross-page product tour. The oversized shadow dims everything except the
+   focused rectangle; the transparent guard keeps the tour read-only. */
+.product-tour[hidden] { display: none; }
+.product-tour::before { content: ""; position: fixed; z-index: 999; inset: 0; }
+.tour-focus,
+.tour-guard {
+  position: fixed;
+  border-radius: 8px;
+}
+.tour-focus {
+  z-index: 1000;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgb(3 7 18 / 0.72), 0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent);
+  pointer-events: none;
+  transition: left 150ms ease, top 150ms ease, width 150ms ease, height 150ms ease;
+}
+.tour-guard { z-index: 1001; cursor: default; }
+.tour-popover {
+  position: fixed;
+  z-index: 1002;
+  width: min(360px, calc(100vw - 24px));
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.3);
+}
+.tour-progress { display: flex; align-items: center; justify-content: space-between; color: var(--accent); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tour-close { padding: 0.1rem 0.3rem; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 1.15rem; line-height: 1; cursor: pointer; }
+.tour-close:hover { color: var(--text); }
+.tour-popover h2 { margin: 0.55rem 0 0.35rem; font-size: 1.05rem; }
+.tour-popover p { min-height: 3.6em; margin: 0; color: var(--muted); font-size: 0.86rem; }
+.tour-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; }
+.tour-nav { display: flex; gap: 0.5rem; margin-left: auto; }
+.tour-active { overscroll-behavior: none; }
 .metric-summary {
   display: flex;
   align-items: baseline;
@@ -552,6 +659,13 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
   .container { margin: 0.75rem auto; padding: 0 0.75rem; }
   .flash { margin: 0.75rem 0.75rem 0; }
   .page-head { align-items: flex-start; gap: 0.75rem; }
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-menu {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .settings-tab { flex: 0 0 auto; min-width: 10rem; }
   .dashboard-chart { padding: 1rem 0.75rem 0.6rem; }
   .chart-head { align-items: stretch; flex-direction: column; gap: 0.5rem; }
   table {
@@ -568,6 +682,9 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
   .checks { flex-wrap: wrap; padding-top: 0; }
   .form { padding: 1rem; }
   .form input, .form select, .filter select { font-size: 16px; }
+  .settings-panel-body input { font-size: 16px; }
+  .settings-panel-head, .settings-panel-body { padding: 1rem; }
+  .settings-panel-actions { padding: 0.8rem 1rem; }
   .page-head { flex-wrap: wrap; }
   dialog.modal {
     width: calc(100vw - 1rem);
@@ -578,6 +695,11 @@ code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 4px;
     height: auto;
     overflow: auto;
   }
+  .tour-popover { padding: 0.9rem; }
+  .tour-popover p { min-height: 0; }
+  .tour-actions { align-items: stretch; flex-direction: column; }
+  .tour-nav { width: 100%; margin-left: 0; }
+  .tour-nav .btn { flex: 1; }
   .execution-metrics-layout {
     grid-template-columns: 1fr;
     max-height: none;

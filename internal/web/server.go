@@ -72,6 +72,7 @@ type Server struct {
 //	GET  /availability                     GET  /fragment/availability
 //	GET  /settings                         POST /settings
 //	POST /settings/backup                  POST /settings/restore
+//	POST /onboarding/dismiss
 func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *scheduler.Scheduler, mon *monitor.Monitor) *Server {
 	s := &Server{cfg: cfg, db: store, engine: engine, sched: sched, mon: mon, mux: http.NewServeMux()}
 	mux := s.mux
@@ -121,6 +122,7 @@ func New(cfg config.Config, store *db.Store, engine *backup.Engine, sched *sched
 	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
 	mux.HandleFunc("POST /settings/backup", s.requireAuth(s.settingsBackup))
 	mux.HandleFunc("POST /settings/restore", s.requireAuth(s.settingsRestore))
+	mux.HandleFunc("POST /onboarding/dismiss", s.requireAuth(s.onboardingDismiss))
 
 	static, err := fs.Sub(files, "static")
 	if err != nil {
@@ -176,11 +178,12 @@ func (s *Server) funcs() template.FuncMap {
 
 // pageData is the template context for full pages.
 type pageData struct {
-	Title string
-	CSRF  string
-	Msg   string
-	Err   string
-	Data  any
+	Title          string
+	CSRF           string
+	Msg            string
+	Err            string
+	ShowOnboarding bool
+	Data           any
 }
 
 var funcMap = template.FuncMap{
@@ -225,11 +228,12 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 // page renders an authenticated page, injecting session + flash context.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, name, title string, status int, data any) {
 	s.render(w, status, name, pageData{
-		Title: title,
-		CSRF:  sessionFrom(r).CSRF,
-		Msg:   r.URL.Query().Get("msg"),
-		Err:   r.URL.Query().Get("err"),
-		Data:  data,
+		Title:          title,
+		CSRF:           sessionFrom(r).CSRF,
+		Msg:            r.URL.Query().Get("msg"),
+		Err:            r.URL.Query().Get("err"),
+		ShowOnboarding: s.onboardingPending(),
+		Data:           data,
 	})
 }
 
